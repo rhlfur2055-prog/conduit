@@ -1,0 +1,4 @@
+# GitHub 언어 통계에서 디자인 목업·정적 대시보드 HTML을 제외 (주 언어가 JavaScript로 표시되도록)
+design/** linguist-documentation
+docs/** linguist-documentation
+server/dashboard.html linguist-vendored

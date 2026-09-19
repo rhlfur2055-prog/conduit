@@ -1,5 +1,7 @@
 # Conduit — 자동화 워크플로 빌더
 
+[![test](https://github.com/rhlfur2055-prog/conduit/actions/workflows/test.yml/badge.svg)](https://github.com/rhlfur2055-prog/conduit/actions/workflows/test.yml)
+
 ![Conduit 데모 — 주문 5건이 금액 기준으로 분기되어 VIP 3건·소액 2건으로 처리되는 장면](docs/demo.gif)
 
 *주문 5건 → 대기(레이트 리밋 흉내) → IF `amount > 30000` → VIP 3건은 필드 설정·합계, 소액 2건은 건수 집계. 노드마다 처리한 아이템 수가 표시되고, 노드를 열면 입력·출력 아이템을 볼 수 있습니다.*

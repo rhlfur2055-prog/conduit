@@ -1,0 +1,106 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Noto Sans KR', -apple-system, 'Malgun Gothic', sans-serif; }
+    a { color: #2f6fed; } a:hover { color: #1d4ed8; }
+  </style>
+</helmet>
+
+<div style="width: 720px; padding: 28px 24px 40px; background: #ffffff; box-sizing: border-box;">
+
+  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px;">
+    <span style="display: inline-block; padding: 3px 9px; border-radius: 4px; background: {{accent}}; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0.04em;">개선</span>
+    <span style="color: #999; font-size: 12px;">카드 · 가격 앵커 · 카드 내 CTA</span>
+  </div>
+
+  <h1 style="margin: 0 0 18px; font-size: 26px; line-height: 1.35; color: #1a1a1a; font-weight: 700;">클리오 세일 특가 정리 (2026.08.20) — 예산별 3가지</h1>
+
+  <p style="font-size: 0.85em; color: #777; border: 1px solid #e5e5e5; border-radius: 6px; padding: 10px 14px; background: #fafafa; margin: 0 0 18px;">이 게시물은 제휴마케팅(링크프라이스) 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받을 수 있습니다.</p>
+
+  <p style="line-height: 1.8; margin: 0 0 22px; color: #333;">클리오 세일 가격은 재고와 프로모션에 따라 수시로 바뀝니다. 가격과 배송 조건을 나란히 놓고 볼 수 있게 정리했습니다. 예산이 정해져 있다면 가격부터, 급하시면 배송 항목부터 보시면 빠릅니다.</p>
+
+  <div style="border: 1px solid #e5e5e5; border-radius: 10px; padding: 16px 18px; margin: 0 0 26px; background: #fafafa;">
+    <p style="margin: 0 0 10px; font-weight: 700; color: #333; font-size: 14px;">한눈에 보기</p>
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <sc-for list="{{items}}" as="item" hint-placeholder-count="3">
+        <a href="#" style="display: flex; align-items: baseline; gap: 10px; text-decoration: none; color: #333;">
+          <span style="flex-shrink: 0; width: 18px; color: #999; font-size: 13px; font-weight: 700;">{{item.rank}}</span>
+          <span style="flex-grow: 1; color: #2f6fed; font-size: 14px;">{{item.name}}</span>
+          <span style="flex-shrink: 0; font-weight: 700; color: #1a1a1a; font-size: 14px;">{{item.price}}</span>
+        </a>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 20px;">
+    <sc-for list="{{items}}" as="item" hint-placeholder-count="3">
+      <div style="border: 1px solid #e5e5e5; border-radius: 12px; padding: 20px; background: #ffffff;">
+
+        <div style="display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px;">
+          <span style="flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: {{accent}}; color: #fff; font-size: 13px; font-weight: 700;">{{item.rank}}</span>
+          <h2 style="margin: 0; font-size: 19px; line-height: 1.4; color: #1a1a1a; font-weight: 700; flex-grow: 1;">{{item.name}}</h2>
+        </div>
+
+        <div style="display: flex; align-items: flex-end; gap: 10px; margin-bottom: 12px;">
+          <span style="font-size: 28px; font-weight: 700; color: #1a1a1a; line-height: 1;">{{item.price}}</span>
+          <span style="color: #999; font-size: 12px; padding-bottom: 2px;">작성 시점 기준 · 변동 가능</span>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px;">
+          <span style="padding: 4px 10px; border-radius: 999px; background: #f3f4f6; color: #4b5563; font-size: 12px;">{{item.category}}</span>
+          <sc-if value="{{item.freeShip}}" hint-placeholder-val="{{true}}">
+            <span style="padding: 4px 10px; border-radius: 999px; background: #eef4ff; color: #2f6fed; font-size: 12px; font-weight: 500;">무료배송</span>
+          </sc-if>
+          <span style="padding: 4px 10px; border-radius: 999px; background: #f3f4f6; color: #4b5563; font-size: 12px;">{{item.ship}}</span>
+        </div>
+
+        <p style="line-height: 1.8; color: #444; margin: 0 0 16px; font-size: 15px;">{{item.comment}}</p>
+
+        <a href="#" style="display: flex; align-items: center; justify-content: center; gap: 6px; height: 48px; background: {{accent}}; color: #fff; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 15px;">
+          오늘 가격 확인하기
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+        </a>
+
+      </div>
+    </sc-for>
+  </div>
+
+  <p style="line-height: 1.8; margin: 26px 0 0; color: #333;">표시된 금액은 작성 시점 기준이라 지금은 달라졌을 수 있습니다. 다음 글에서 또 괜찮은 조건으로 찾아오겠습니다.</p>
+
+  <div style="border-top: 1px solid #eee; margin-top: 28px; padding-top: 16px;">
+    <p style="margin: 0 0 10px; font-weight: 700; color: #333; font-size: 14px;">함께 보면 좋은 글</p>
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <a href="#" style="color: #2f6fed; font-size: 14px; text-decoration: none;">클리오 가성비 5선 — 예산별 정리</a>
+      <a href="#" style="color: #2f6fed; font-size: 14px; text-decoration: none;">뷰티 특가 모음 (이번 주)</a>
+    </div>
+  </div>
+
+  <p style="font-size: 0.85em; color: #999; margin: 18px 0 0;">※ 본문의 가격 정보는 2026.8.20. 작성 시점 기준이며 실시간 가격은 링크에서 확인할 수 있습니다.</p>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#2f6fed","options":["#2f6fed","#111827","#c2410c","#047857"]}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const items = [
+      { rank: 1, name: '클리오 킬커버 파운웨어 쿠션', price: '29,000원', category: '뷰티', freeShip: true,  ship: '일반배송',
+        comment: '뷰티 품목, 가격은 29,000원, 배송비는 무료입니다. 상세 페이지에서 옵션별 가격 차이를 함께 보시는 걸 권합니다.' },
+      { rank: 2, name: '클리오 프로 아이 팔레트', price: '34,000원', category: '뷰티', freeShip: false, ship: '일반배송',
+        comment: '뷰티 품목, 가격은 34,000원입니다. 구매 전 후기와 옵션 구성을 같이 확인하면 실패 확률이 줍니다.' },
+      { rank: 3, name: '페리페라 잉크 무드 글로위 틴트', price: '9,900원', category: '뷰티', freeShip: false, ship: '일반배송',
+        comment: '뷰티 품목, 가격은 9,900원입니다. 색상이나 용량 옵션에 따라 배송일이 달라지기도 합니다.' },
+    ];
+    return { accent: this.props.accent ?? '#2f6fed', items };
+  }
+}
+</script>
+</body>
+</html>

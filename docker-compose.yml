@@ -1,0 +1,38 @@
+# ============================================================
+# Conduit — docker compose
+#   docker compose up -d --build   →  http://localhost:8787
+# 데이터(워크플로·크리덴셜·실행기록·DLQ)는 named volume 에 영속화된다.
+# ============================================================
+services:
+  conduit:
+    build: .
+    image: conduit:latest
+    container_name: conduit
+    restart: unless-stopped
+    ports:
+      - "${CONDUIT_PORT:-8787}:8787"
+    environment:
+      NODE_ENV: production
+      PORT: 8787
+      TZ: ${TZ:-Asia/Seoul}
+      # 실제 Claude 호출을 켜려면 .env 에 설정 (또는 UI 자격 증명 사용)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # 동시 실행 상한 (큐 밀림 대응)
+      CONDUIT_CONCURRENCY: ${CONDUIT_CONCURRENCY:-10}
+    volumes:
+      # 크리덴셜 암호화 키(.enckey)도 여기 있으므로 반드시 유지할 것
+      - conduit-data:/app/server/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  conduit-data:

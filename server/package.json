@@ -1,0 +1,17 @@
+{
+  "name": "conduit-server",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Conduit 자동화 백엔드 — 실행/저장/웹훅/스케줄/크리덴셜",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "msedge-tts": "^2.0.7",
+    "node-cron": "^4.6.0",
+    "nodemailer": "^9.0.5"
+  }
+}

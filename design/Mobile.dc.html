@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Noto Sans KR', -apple-system, 'Malgun Gothic', sans-serif; }
+    a { color: #2f6fed; } a:hover { color: #1d4ed8; }
+  </style>
+</helmet>
+
+<div style="width: 375px; padding: 20px 16px 32px; background: #ffffff; box-sizing: border-box;">
+
+  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+    <span style="display: inline-block; padding: 3px 9px; border-radius: 4px; background: {{accent}}; color: #fff; font-size: 11px; font-weight: 700;">모바일</span>
+    <span style="color: #999; font-size: 12px;">375px — 실제 유입 대부분</span>
+  </div>
+
+  <h1 style="margin: 0 0 14px; font-size: 21px; line-height: 1.4; color: #1a1a1a; font-weight: 700;">클리오 세일 특가 정리 (2026.08.20) — 예산별 3가지</h1>
+
+  <p style="font-size: 12px; color: #777; border: 1px solid #e5e5e5; border-radius: 6px; padding: 9px 12px; background: #fafafa; margin: 0 0 16px; line-height: 1.6;">이 게시물은 제휴마케팅(링크프라이스) 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받을 수 있습니다.</p>
+
+  <p style="line-height: 1.75; margin: 0 0 20px; color: #333; font-size: 15px;">클리오 세일 가격은 재고와 프로모션에 따라 수시로 바뀝니다. 가격과 배송 조건을 나란히 놓고 볼 수 있게 정리했습니다.</p>
+
+  <div style="display: flex; flex-direction: column; gap: 16px;">
+    <sc-for list="{{items}}" as="item" hint-placeholder-count="2">
+      <div style="border: 1px solid #e5e5e5; border-radius: 12px; padding: 16px; background: #ffffff;">
+
+        <div style="display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px;">
+          <span style="flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: {{accent}}; color: #fff; font-size: 12px; font-weight: 700;">{{item.rank}}</span>
+          <h2 style="margin: 0; font-size: 17px; line-height: 1.4; color: #1a1a1a; font-weight: 700; flex-grow: 1;">{{item.name}}</h2>
+        </div>
+
+        <div style="display: flex; align-items: flex-end; gap: 8px; margin-bottom: 10px;">
+          <span style="font-size: 26px; font-weight: 700; color: #1a1a1a; line-height: 1;">{{item.price}}</span>
+          <span style="color: #999; font-size: 11px; padding-bottom: 2px;">변동 가능</span>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;">
+          <span style="padding: 4px 10px; border-radius: 999px; background: #f3f4f6; color: #4b5563; font-size: 12px;">{{item.category}}</span>
+          <sc-if value="{{item.freeShip}}" hint-placeholder-val="{{true}}">
+            <span style="padding: 4px 10px; border-radius: 999px; background: #eef4ff; color: #2f6fed; font-size: 12px; font-weight: 500;">무료배송</span>
+          </sc-if>
+        </div>
+
+        <p style="line-height: 1.75; color: #444; margin: 0 0 14px; font-size: 14px;">{{item.comment}}</p>
+
+        <a href="#" style="display: flex; align-items: center; justify-content: center; gap: 6px; height: 52px; background: {{accent}}; color: #fff; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 16px;">
+          오늘 가격 확인하기
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+        </a>
+
+      </div>
+    </sc-for>
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#2f6fed","options":["#2f6fed","#111827","#c2410c","#047857"]}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const items = [
+      { rank: 1, name: '클리오 킬커버 파운웨어 쿠션', price: '29,000원', category: '뷰티', freeShip: true,
+        comment: '뷰티 품목, 가격은 29,000원, 배송비는 무료입니다. 상세 페이지에서 옵션별 가격 차이를 함께 보시는 걸 권합니다.' },
+      { rank: 2, name: '클리오 프로 아이 팔레트', price: '34,000원', category: '뷰티', freeShip: false,
+        comment: '뷰티 품목, 가격은 34,000원입니다. 구매 전 후기와 옵션 구성을 같이 확인하면 실패 확률이 줍니다.' },
+    ];
+    return { accent: this.props.accent ?? '#2f6fed', items };
+  }
+}
+</script>
+</body>
+</html>

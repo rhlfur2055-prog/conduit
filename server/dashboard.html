@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>그리 채널 관제실</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', 'Malgun Gothic', sans-serif; background: #0f1117; color: #e6e8ee; padding: 24px; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 22px; display: flex; align-items: center; gap: 10px; }
+  .sub { color: #8b93a7; font-size: 13px; margin-top: 4px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+  .stat { background: #171a23; border: 1px solid #262b3a; border-radius: 12px; padding: 14px 18px; min-width: 140px; }
+  .stat b { font-size: 22px; display: block; }
+  .stat span { color: #8b93a7; font-size: 12px; }
+  h2 { font-size: 15px; margin: 28px 0 10px; color: #aab2c5; }
+  .card { background: #171a23; border: 1px solid #262b3a; border-radius: 12px; padding: 14px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .day { font-size: 18px; font-weight: 800; width: 34px; text-align: center; }
+  .grow { flex: 1; min-width: 200px; }
+  .title { font-weight: 600; font-size: 14px; }
+  .meta { color: #8b93a7; font-size: 12px; margin-top: 3px; }
+  .badge { font-size: 11px; padding: 3px 10px; border-radius: 999px; font-weight: 700; }
+  .b-live { background: #143d2b; color: #4ade80; }
+  .b-sched { background: #3a2f14; color: #facc15; }
+  .b-on { background: #14303d; color: #60a5fa; }
+  .b-off { background: #3d1414; color: #f87171; }
+  .nums { display: flex; gap: 14px; font-size: 13px; color: #cdd3e0; }
+  .nums b { color: #fff; }
+  a.btn, button.btn { background: #262b3a; color: #e6e8ee; border: none; border-radius: 8px; padding: 7px 12px; font-size: 12px; cursor: pointer; text-decoration: none; display: inline-block; }
+  a.btn:hover, button.btn:hover { background: #323950; }
+  button.run { background: #1d4ed8; }
+  button.run:hover { background: #2563eb; }
+  #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1d4ed8; padding: 10px 22px; border-radius: 999px; font-size: 13px; display: none; }
+  .foot { margin-top: 26px; color: #566078; font-size: 12px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🧠 그리 채널 관제실 <span id="server" class="badge b-off">서버 확인중</span></h1>
+  <div class="sub">매일 아침 9시 테스트 쇼츠 · 렌더→업로드→검증댓글 완전 자동 · <span id="updated"></span></div>
+
+  <div class="row" id="channelStats">
+    <div class="stat"><b>-</b><span>구독자</span></div>
+    <div class="stat"><b>-</b><span>총 조회수</span></div>
+  </div>
+
+  <h2>📅 이번 주 편성</h2>
+  <div id="videos">불러오는 중…</div>
+
+  <h2>🔧 유지보수 — 워크플로 (클릭으로 즉시 실행)</h2>
+  <div id="workflows">불러오는 중…</div>
+
+  <div class="foot">
+    <button class="btn" onclick="loadAll()">🔄 새로고침</button>
+    <a class="btn" href="/" target="_blank">🛠 Conduit 편집기 열기</a>
+    <a class="btn" href="https://studio.youtube.com" target="_blank">📺 유튜브 스튜디오</a>
+    <span>30초마다 자동 갱신</span>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => Number(n || 0).toLocaleString('ko-KR');
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3500); }
+
+async function loadHealth() {
+  try { await fetch('/api/health').then(r => r.json()); $('server').textContent = '서버 정상'; $('server').className = 'badge b-live'; }
+  catch { $('server').textContent = '서버 다운'; $('server').className = 'badge b-off'; }
+}
+
+async function loadStats() {
+  try {
+    const d = await fetch('/api/channel/stats').then(r => r.json());
+    if (d.error) throw new Error(d.error);
+    $('channelStats').innerHTML =
+      '<div class="stat"><b>' + fmt(d.channel.subscriberCount) + '</b><span>구독자</span></div>' +
+      '<div class="stat"><b>' + fmt(d.channel.viewCount) + '</b><span>총 조회수</span></div>';
+    $('videos').innerHTML = d.videos.map(v => {
+      const live = v.privacy === 'public';
+      const sched = v.publishAt ? new Date(v.publishAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric' }) : '';
+      return '<div class="card"><div class="day">' + v.day + '</div>' +
+        '<div class="grow"><div class="title">' + (v.title || v.name) + '</div>' +
+        '<div class="meta">' + (live ? '🔴 공개 중' : '⏰ 예약 · ' + sched + ' 공개') + '</div></div>' +
+        (live ? '<div class="nums"><span>조회 <b>' + fmt(v.views) + '</b></span><span>좋아요 <b>' + fmt(v.likes) + '</b></span><span>댓글 <b>' + fmt(v.comments) + '</b></span></div>' : '') +
+        '<span class="badge ' + (live ? 'b-live' : 'b-sched') + '">' + (live ? 'LIVE' : '예약') + '</span>' +
+        '<a class="btn" href="https://www.youtube.com/shorts/' + v.id + '" target="_blank">▶ 보기</a>' +
+        '<a class="btn" href="https://studio.youtube.com/video/' + v.id + '/edit" target="_blank">✏ 편집</a></div>';
+    }).join('');
+    $('updated').textContent = '갱신: ' + new Date().toLocaleTimeString('ko-KR');
+  } catch (e) { $('videos').innerHTML = '<div class="card">통계 로드 실패: ' + e.message + '</div>'; }
+}
+
+async function loadWorkflows() {
+  try {
+    const list = await fetch('/api/workflows').then(r => r.json());
+    $('workflows').innerHTML = list.map(w =>
+      '<div class="card"><div class="grow"><div class="title">' + w.name + '</div>' +
+      '<div class="meta">' + (w.nodes ? w.nodes.length + '개 노드' : '') + '</div></div>' +
+      '<span class="badge ' + (w.active ? 'b-on' : 'b-off') + '">' + (w.active ? '자동 실행 중' : '수동') + '</span>' +
+      '<button class="btn run" onclick="runWf(\'' + w.id + '\', \'' + (w.name || '').replace(/'/g, '') + '\')">▶ 지금 실행</button></div>'
+    ).join('');
+  } catch (e) { $('workflows').innerHTML = '<div class="card">워크플로 로드 실패</div>'; }
+}
+
+async function runWf(id, name) {
+  if (!confirm('"' + name + '" 워크플로를 지금 실행할까요?\n(렌더·업로드가 포함된 워크플로는 실제로 영상을 만들거나 올릴 수 있습니다)')) return;
+  toast('실행 중: ' + name + ' …');
+  try {
+    const r = await fetch('/api/workflows/' + id + '/run', { method: 'POST' }).then(x => x.json());
+    toast((r.execution && r.execution.status === 'error' ? '⚠ 오류로 종료: ' : '✅ 완료: ') + name);
+  } catch (e) { toast('❌ 실패: ' + e.message); }
+}
+
+function loadAll() { loadHealth(); loadStats(); loadWorkflows(); }
+loadAll();
+setInterval(loadAll, 30000);
+</script>
+</body>
+</html>

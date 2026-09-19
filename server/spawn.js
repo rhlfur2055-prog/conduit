@@ -30,14 +30,15 @@ export function buildCommandLine(command, args = []) {
  */
 export function needsShell(command, { platform = process.platform, env = process.env, exists = fs.existsSync } = {}) {
   if (platform !== 'win32') return false;
-  const ext = path.extname(command).toLowerCase();
+  const P = path.win32; // platform 을 win32 로 주입해 테스트할 때도(리눅스 CI 포함) Windows 경로 규칙을 쓴다
+  const ext = P.extname(command).toLowerCase();
   if (ext === '.cmd' || ext === '.bat') return true;
   if (ext) return false;                                        // .exe 처럼 확장자가 명시된 실행 파일
   if (command.includes('/') || command.includes('\\')) return false; // 경로가 있는데 확장자가 없음 → 그대로
   const dirs = String(env.PATH || env.Path || '').split(';').filter(Boolean);
   for (const dir of dirs) {
-    if (exists(path.join(dir, command + '.com')) || exists(path.join(dir, command + '.exe'))) return false;
-    if (exists(path.join(dir, command + '.bat')) || exists(path.join(dir, command + '.cmd'))) return true;
+    if (exists(P.join(dir, command + '.com')) || exists(P.join(dir, command + '.exe'))) return false;
+    if (exists(P.join(dir, command + '.bat')) || exists(P.join(dir, command + '.cmd'))) return true;
   }
   return false;
 }

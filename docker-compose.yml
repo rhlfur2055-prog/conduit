@@ -17,6 +17,8 @@ services:
       TZ: ${TZ:-Asia/Seoul}
       # 컨테이너 밖에서 들어오는 요청은 로컬이 아니므로 API 키가 필요하다 (.env 에 설정)
       CONDUIT_API_KEY: ${CONDUIT_API_KEY:-}
+      # 비워 두면 키가 있을 때 코드 실행이 꺼진다 (코드 노드 · JS 표현식 · 에이전트 run_code)
+      CONDUIT_ALLOW_CODE: ${CONDUIT_ALLOW_CODE:-}
       # 실제 Claude 호출을 켜려면 .env 에 설정 (또는 UI 자격 증명 사용)
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # 동시 실행 상한 (큐 밀림 대응)

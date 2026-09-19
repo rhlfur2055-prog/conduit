@@ -41,6 +41,7 @@ import { runFlow } from '../src/engine/executor.js';
 import { Workflows, Executions, Credentials, ProcessedEvents, DLQ, readData, VerifiedComments } from './store.js';
 import { verifySignature, idempotencyKey } from './webhookSecurity.js';
 import { requireApiKey, authMode } from './auth.js';
+import { codeExecutionAllowed, currentPolicy } from './policy.js';
 import { callLLM } from './llm.js';
 import * as integrations from './integrations.js';
 import { runAgent } from './agent.js';
@@ -136,6 +137,7 @@ async function execute(workflow, { seed = {}, trigger = 'manual' } = {}) {
   const statuses = {};
   const results = await runFlow(nodes, edges, {
     seed,
+    policy: currentPolicy(),
     onLog: (l) => logs.push(l),
     onStatus: (id, status, payload) => { statuses[id] = { status, ...(payload || {}) }; },
     onDeadLetter: (e) => DLQ.add({ ...e, workflowId: workflow.id, workflowName: workflow.name }),
@@ -218,7 +220,7 @@ function registerAll() {
 
 /* ---------- 헬스체크 (인증 없이 공개) ---------- */
 app.get('/api/health', (_req, res) =>
-  res.json({ ok: true, name: 'Conduit', time: new Date().toISOString(), auth: authMode() }));
+  res.json({ ok: true, name: 'Conduit', time: new Date().toISOString(), auth: authMode(), code: codeExecutionAllowed() ? 'on' : 'off' }));
 
 /* ---------- 인증 — 여기부터 등록되는 /api/*, /mcp 는 키가 필요하다 ----------
    /webhook/* 은 외부 서비스가 호출하는 입구라 공개하고, 노드별 HMAC 서명 검증으로 보호한다. */
@@ -275,6 +277,7 @@ app.post('/api/run/stream', async (req, res) => {
   const statuses = {};
   try {
     await runFlow(nodes, edges, {
+      policy: currentPolicy(),
       onStatus: (id, status, payload) => {
         statuses[id] = { status, ...(payload || {}) };
         send('status', { id, status, output: payload?.output, input: payload?.input, error: payload?.error });

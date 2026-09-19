@@ -6,7 +6,51 @@
 //   $index : 아이템 인덱스
 // ============================================================
 
+// ---- 안전 모드: 데이터 경로 읽기만 허용 (서버에서 코드 실행이 꺼져 있을 때) ----
+//   허용: $json.a.b · $json["주문 번호"] · $items[0].x · $items.length · $index · $now
+//   불가: 연산·함수 호출·전역 접근 등 경로가 아닌 모든 것 → 예외(재시도하지 않는 400)
+const ROOTS = {
+  json: (c) => c.$json ?? {},
+  items: (c) => c.$items ?? [],
+  index: (c) => c.$index ?? 0,
+  now: (c) => c.$now,
+};
+const SEGMENT = /^(?:\.([\p{L}_$][\p{L}\p{N}_$]*)|\[(\d+)\]|\[(["'])(.*?)\3\])/u;
+const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
+function blocked(src) {
+  const err = new Error(`코드 실행이 꺼져 있어 표현식에는 데이터 경로만 쓸 수 있습니다: {{ ${src} }}`);
+  err.status = 400;
+  return err;
+}
+
+function readKey(value, key) {
+  if (value == null) return undefined;
+  const own = Object.prototype.hasOwnProperty.call(Object(value), key);
+  if (own) return value[key];
+  if (key === 'length' && (Array.isArray(value) || typeof value === 'string')) return value.length;
+  return undefined; // 프로토타입 메서드 등은 읽지 않는다
+}
+
+export function evalPath(code, ctx) {
+  const src = String(code).trim();
+  const root = src.match(/^\$(json|items|index|now)/);
+  if (!root) throw blocked(src);
+  let value = ROOTS[root[1]](ctx);
+  let rest = src.slice(root[0].length);
+  while (rest.length) {
+    const m = rest.match(SEGMENT);
+    if (!m) throw blocked(src);
+    const key = m[1] ?? m[2] ?? m[4];
+    if (FORBIDDEN_KEYS.has(key)) throw blocked(src);
+    value = readKey(value, key);
+    rest = rest.slice(m[0].length);
+  }
+  return value;
+}
+
 export function evalExpr(code, ctx) {
+  if (ctx.safeExpressions) return evalPath(code, ctx);
   try {
     // eslint-disable-next-line no-new-func
     const fn = new Function('$json', '$now', '$items', '$index', `"use strict"; return (${code});`);

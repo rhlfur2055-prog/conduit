@@ -90,11 +90,15 @@ describe('서버 라우트 보호 (실제 HTTP)', () => {
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize' }),
   });
 
-  it('헬스체크는 키 없이도 열려 있고 인증 방식을 알려 준다', async () => {
+  it('헬스체크는 키 없이도 열려 있고 인증 방식·코드 실행 여부를 알려 준다', async () => {
     process.env.CONDUIT_API_KEY = 'test-key';
     const r = await get('/api/health');
     expect(r.status).toBe(200);
-    expect((await r.json()).auth).toBe('api-key');
+    expect(await r.json()).toMatchObject({ auth: 'api-key', code: 'off' });
+
+    process.env.CONDUIT_ALLOW_CODE = 'true';
+    expect((await (await get('/api/health')).json()).code).toBe('on');
+    delete process.env.CONDUIT_ALLOW_CODE;
   });
 
   it('키가 설정되면 /api 는 키 없이 401, 틀린 키 401, 맞는 키 200', async () => {

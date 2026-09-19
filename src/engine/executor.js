@@ -36,10 +36,16 @@ function topoSort(nodes, edges) {
 const truncate = (s, n) => (s && s.length > n ? s.slice(0, n) + '…' : s);
 const nowISO = () => new Date().toISOString();
 
+// 사용자 JS 를 그대로 실행하는 노드 — 정책상 코드 실행이 꺼져 있으면 돌리지 않는다
+const CODE_NODES = new Set(['code']);
+
 /**
+ * @param {object} [opts]
+ * @param {{ allowCode?: boolean }} [opts.policy] 서버가 넘기는 실행 정책. 브라우저(내 컴퓨터)에서는 생략 → 전부 허용.
  * @returns Map<nodeId, { status, output, input }>
  */
-export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () => {}, seed = {}, onAgentStep = () => {}, onDeadLetter = () => {}, onItemProgress = () => {} } = {}) {
+export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () => {}, seed = {}, onAgentStep = () => {}, onDeadLetter = () => {}, onItemProgress = () => {}, policy = {} } = {}) {
+  const allowCode = policy.allowCode !== false;
   const results = new Map();
   onLog({ kind: 'info', msg: '워크플로 실행 시작…' });
 
@@ -91,6 +97,15 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
 
     // 주 입력 아이템들 (트리거는 입력이 없으므로 더미 1개로 1회 실행)
     const primaryItems = inputs.main ?? inputs.input1 ?? Object.values(inputs)[0] ?? [{}];
+
+    if (!allowCode && CODE_NODES.has(node.data.kind)) {
+      const msg = '이 서버에서는 코드 실행이 꺼져 있습니다 (CONDUIT_ALLOW_CODE)';
+      results.set(node.id, { status: 'error', output: {}, input: primaryItems, attempts: 0 });
+      onStatus(node.id, 'error', { error: msg, input: primaryItems });
+      onLog({ kind: 'err', msg: `✖ ${def.title} 차단: ${msg}` });
+      continue;
+    }
+
     onStatus(node.id, 'running');
 
     // 노드 설정 오버라이드
@@ -137,6 +152,7 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
         // ---- 배치 모드: 배열 전체를 한 번에 받는 노드 (Aggregate/Merge/Sort…) ----
         const ctx = {
           $json: primaryItems[0] ?? {}, $items: primaryItems, $index: 0, $now: started,
+          safeExpressions: !allowCode,
           onAgentStep: (step) => onAgentStep(node.id, step),
         };
         const { output, attempts } = await runWithRetry(inputs, ctx);
@@ -165,6 +181,7 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
 
             const ctx = {
               $json: item ?? {}, $items: primaryItems, $index: index, $now: started,
+              safeExpressions: !allowCode,
               onAgentStep: (step) => onAgentStep(node.id, step),
             };
             const { output, attempts } = await runWithRetry(oneInputs, ctx);

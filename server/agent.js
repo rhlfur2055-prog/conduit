@@ -8,8 +8,19 @@ import * as integrations from './integrations.js';
 import { Workflows } from './store.js';
 import { runFlow } from '../src/engine/executor.js';
 import { mcpListTools, mcpCallTool } from './mcp.js';
+import { codeExecutionAllowed, currentPolicy } from './policy.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// 코드를 실행하는 도구 — 서버 정책상 코드 실행이 꺼져 있으면 LLM 에게 보여 주지도, 실행하지도 않는다
+const CODE_TOOLS = new Set(['run_code']);
+
+/** 요청된 도구 이름에서 존재하지 않거나 정책상 막힌 도구를 뺀다 */
+export function agentToolNames(requested, { allowCode = true } = {}) {
+  const all = Object.keys(TOOLS);
+  const names = requested && requested.length ? requested : all;
+  return names.filter((n) => TOOLS[n] && (allowCode || !CODE_TOOLS.has(n)));
+}
 
 // ---------- 서브워크플로 실행 (재귀 깊이 가드) ----------
 let subDepth = 0;
@@ -32,7 +43,7 @@ export async function runSubworkflow(ref, input) {
         seed[n.id] = { main: input || {} };
       }
     }
-    const results = await runFlow(nodes, edges, { seed });
+    const results = await runFlow(nodes, edges, { seed, policy: currentPolicy() });
     const outs = nodes
       .filter((n) => n.data.kind === 'output')
       .map((n) => results.get(n.id)?.output?.main)
@@ -180,7 +191,8 @@ async function anthropic(messages, system, model, tools, key) {
  */
 export async function runAgent({ system, task, model, maxSteps = 4, toolNames, creds = {}, onStep }) {
   const key = getApiKey();
-  const names = (toolNames && toolNames.length ? toolNames : Object.keys(TOOLS)).filter((n) => TOOLS[n]);
+  const allowCode = codeExecutionAllowed();
+  const names = agentToolNames(toolNames, { allowCode });
   const tools = names.map((n) => {
     if (n === 'run_workflow') {
       const list = Workflows.all().map((w) => `"${w.name}"`).join(', ');
@@ -237,10 +249,13 @@ export async function runAgent({ system, task, model, maxSteps = 4, toolNames, c
 
     const results = [];
     for (const tu of toolUses) {
-      const tool = TOOLS[tu.name];
+      // 목록에서 뺐더라도 모델이 이름을 지어내 부를 수 있으므로 실행 직전에 한 번 더 막는다
+      const tool = names.includes(tu.name) ? TOOLS[tu.name] : null;
       let out;
       try {
-        out = tool ? await tool.run(tu.input || {}, { creds }) : `알 수 없는 도구: ${tu.name}`;
+        out = tool ? await tool.run(tu.input || {}, { creds })
+          : TOOLS[tu.name] ? `ERROR: 이 서버에서는 ${tu.name} 도구를 쓸 수 없습니다 (CONDUIT_ALLOW_CODE)`
+          : `알 수 없는 도구: ${tu.name}`;
       } catch (e) {
         out = 'ERROR: ' + e.message;
       }

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // CONDUIT_DATA_DIR 로 바꿀 수 있다 (테스트가 임시 폴더를 쓰도록 — 실제 데이터를 건드리지 않게)
-const DATA_DIR = process.env.CONDUIT_DATA_DIR || path.join(__dirname, 'data');
+export const DATA_DIR = process.env.CONDUIT_DATA_DIR || path.join(__dirname, 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const file = (name) => path.join(DATA_DIR, name);

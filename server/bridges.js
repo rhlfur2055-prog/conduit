@@ -17,6 +17,8 @@ import { generatePost } from './blogpost.js';
 import { publishPost as bloggerPublish } from './blogger.js';
 import { fetchProducts as aliProducts } from './aliexpress.js';
 import { fetchMerchants as linkpriceMerchants, makeDeeplinks as linkpriceDeeplink, fetchReport as linkpriceReport } from './linkprice.js';
+import { fetchHotTopics } from './hottopics.js';
+import { renderIssueBrief } from './render-issue.js';
 
 export function installBridges() {
   globalThis.__conduitLLM = callLLM;
@@ -46,6 +48,8 @@ export function installBridges() {
     linkpriceMerchants,
     linkpriceDeeplink,
     linkpriceReport,
+    hotTopics: fetchHotTopics,
+    issueShort: renderIssueBrief,
     mcp: async ({ credential, tool, args }) => {
       if (!tool) return mcpListTools(credential);
       let parsed = {};

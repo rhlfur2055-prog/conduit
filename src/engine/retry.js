@@ -14,7 +14,7 @@ export const RETRY_PROFILES = {
 // 노드 kind → 프로필
 const KIND_PROFILE = {
   httpRequest: 'http', httpAuth: 'http',
-  slack: 'http', notion: 'http', youtube: 'http', naver: 'http',
+  slack: 'http', notion: 'http', youtube: 'http', naver: 'http', hotTopics: 'http',
   gmail: 'email', sendEmail: 'email',
   ai: 'llm', aiAgent: 'llm', aiExtract: 'llm', loopRefine: 'llm',
   manualTrigger: 'none', webhookTrigger: 'none', scheduleTrigger: 'none',

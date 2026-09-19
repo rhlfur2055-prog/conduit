@@ -511,6 +511,26 @@ export const NODE_TYPES = {
       return { main: { ...(i.main || {}), rank: r } };
     },
   },
+  hotTopics: {
+    title: '핫이슈 수집 (Google 트렌드)', icon: 'globe', color: '#1a7f5a', category: '연동', backend: true,
+    inputs: ['main'], outputs: ['main'],
+    defaults: { region: 'KR', limit: '1', minTraffic: '100', koreanOnly: 'true', skipDays: '7' },
+    fields: [
+      { key: 'region', label: '지역 코드 (KR·US·JP…)', type: 'text' },
+      { key: 'limit', label: '가져올 주제 수 — 주제마다 아이템 하나로 흐른다', type: 'select', options: ['1', '2', '3', '5'] },
+      { key: 'minTraffic', label: '최소 검색량 (예: 100)', type: 'text' },
+      { key: 'koreanOnly', label: '한글 주제만', type: 'select', options: ['true', 'false'] },
+      { key: 'skipDays', label: '최근 N일 안에 쓴 주제 제외', type: 'text' },
+    ],
+    summary: (p) => `트렌드 ${p.region} 상위 ${p.limit}`,
+    // 결과가 배열이면 엔진이 아이템 여러 개로 흘려보낸다 (주제 하나 = 아이템 하나)
+    run: async (_i, p) => ({
+      main: await callIntegration('hotTopics', {
+        region: p.region, limit: Number(p.limit) || 1, minTraffic: Number(p.minTraffic) || 0,
+        koreanOnly: p.koreanOnly !== 'false', skipDays: Number(p.skipDays) || 0,
+      }),
+    }),
+  },
   mcpTool: {
     title: 'MCP 도구 호출', icon: 'bolt', color: '#7c5cbf', category: '연동', backend: true,
     inputs: ['main'], outputs: ['main'],
@@ -799,6 +819,36 @@ export const NODE_TYPES = {
       }
       const r = await callIntegration('multiLang', opts);
       return { main: { ...(i.main || {}), multi: r } };
+    },
+  },
+  issueShort: {
+    title: '핫이슈 쇼츠 렌더 (헤드라인 3줄)', icon: 'play', color: '#e11d48', category: '영상', backend: true,
+    inputs: ['main'], outputs: ['main'],
+    defaults: {
+      topic: '{{ $json.topic }}',
+      traffic: '{{ $json.traffic }}',
+      headlinesJson: '{{ $json.headlines }}',
+      maxHeadlines: '3',
+      voice: '선희(여)',
+      cta: '자세한 내용은 설명란 출처 링크에서 확인하세요. 내일 아침 9시, 다음 핫이슈로 만나요.',
+    },
+    fields: [
+      { key: 'topic', label: '주제 (표현식 지원)', type: 'text' },
+      { key: 'traffic', label: '검색량 (표현식 · 없으면 비움)', type: 'text' },
+      { key: 'headlinesJson', label: '헤드라인 배열 [{title,source,url}] (표현식 지원)', type: 'textarea' },
+      { key: 'maxHeadlines', label: '읽을 헤드라인 수', type: 'select', options: ['2', '3', '4'] },
+      { key: 'voice', label: '내레이션 음성 (문장별 1:1 싱크)', type: 'select', options: ['선희(여)', '인준(남)', '현수(남·멀티링궐)'] },
+      { key: 'cta', label: '마무리 멘트', type: 'textarea' },
+    ],
+    summary: (p) => `핫이슈 쇼츠: ${p.topic}`,
+    // 출력에 title/description/tags 를 얹어 두면 YouTube 업로드 노드 기본값이 그대로 물린다
+    run: async (i, p) => {
+      let headlines = p.headlinesJson;
+      if (typeof headlines === 'string') { try { headlines = JSON.parse(headlines); } catch { headlines = []; } }
+      const r = await callIntegration('issueShort', {
+        topic: p.topic, traffic: p.traffic, headlines, maxHeadlines: Number(p.maxHeadlines) || 3, voice: p.voice, cta: p.cta,
+      });
+      return { main: { ...(i.main || {}), video: r, ...(r?.yt ? { title: r.yt.title, description: r.yt.description, tags: r.yt.tags } : {}) } };
     },
   },
   youtubeUpload: {

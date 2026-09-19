@@ -658,3 +658,18 @@ powershell -ExecutionPolicy Bypass -File C:\workflow\flowforge\start.ps1
 
 1. **채널 관제실** (server/dashboard.html + /api/channel/stats + /dashboard 라우트): 바탕화면 "그리 채널 관제실" 아이콘 → 이번주 편성(실시간 조회·좋아요·댓글, 스튜디오 링크) + 워크플로 유지보수(클릭 실행, confirm 가드) + 서버 상태. 30초 자동 갱신. /dashboard는 SPA 폴백보다 먼저 등록해야 함. v3 데일리 공장은 비활성화(기각된 출산율 방지).
 2. **리서치 2탄** (9-agent, 링크검증): 핵심 — ①2025-03-31부터 raw 조회수는 허수(재생 즉시 1뷰) → engagedViews·APV·VVSA로 판정 ②⚠️2025-07-15 비진정성 정책: "시드만 바꾼 변형 대량업로드"가 수익화 금지 명시 타깃 → 재등판시 훅·테마·난이도 실질 교체+변경로그 필수 ③길이 15~25초 최적(11-20초 중앙값 901회) ④제목: 질문형 배제, 결과예고/손실/도전형 A/B, 25자 프론트로드 ⑤릴스 = Graph API 개발모드로 무료 완전자동(클린 마스터 별도 렌더 필수 — 워터마크 재업로드 공식 페널티), 틱톡 SELF_ONLY 대기, 클립 수동+크리에이터 지원. 업로드 시간대 최적화는 공식 부정. 전체 플랜: scratchpad/growth-plan.json
+
+### 2026-09-19 — 공개 전환 · 테스트 · 보안 · 구조 · 패키지
+
+1. **공개 저장소** — 비밀값(`.env`·`server/data`·`.enckey`)이 빠졌는지 두 번 확인한 뒤 GitHub 공개. README 상단에 개요·데모 GIF(주문 5건 분기)·CI 배지.
+2. **테스트 0 → 150** — 엔진(실행 순서·분기·배치·병렬·재시도·오류 격리)·표현식·재시도 정책·노드 동작 69개로 시작. 붙이면서 **버그 2건**: `stableKey`가 중첩 객체 키를 버려 중복 제거가 `{u:{id:1}}`과 `{u:{id:2}}`를 같은 아이템으로 지움(`JSON.stringify` 배열 replacer가 모든 깊이에 적용) · `"{{ a }} {{ b }}"`가 단일 표현식으로 잡혀 `undefined`. GitHub Actions CI(푸시마다 테스트+빌드).
+3. **API 인증** (`server/auth.js`) — `/api`·`/mcp`에 Bearer/X-API-Key. 키 미설정 시 127.0.0.1만 허용(X-Forwarded-For 있으면 비로컬). `timingSafeEqual`. 화면 "설정"에서 키 입력. 401 응답이 워크플로로 들어가 캔버스가 비던 버그도 수정.
+4. **코드 실행 정책** (`server/policy.js`) — 서버에서 사용자 JS가 도는 입구 셋(코드 노드·`{{ }}` 표현식·에이전트 `run_code`)을 `CONDUIT_ALLOW_CODE` 하나로. 키 있는 서버는 기본 꺼짐. 꺼지면 표현식은 `new Function` 없는 경로 전용 해석기.
+5. **서버 분리** — 통합 테스트 11개로 동작을 고정한 뒤 500줄 `index.js` → `app`/`runtime`/`bridges` + `routes/` 5개(동작 변경 없음). `CONDUIT_DATA_DIR`로 테스트 데이터 격리.
+6. **MCP npm 패키지** `packages/conduit-workflows-mcp` — Claude Desktop·Cursor 등 stdio 전용 클라이언트용 다리(공식 SDK). 실제 서버 + 자식 프로세스 + SDK Client로 엔드투엔드 테스트. `server.json` 레지스트리 검증 통과. (npm 배포·레지스트리 등록은 계정 로그인 대기)
+7. **AI 노드 평가(evals)** `npm run eval` — 고객 문의 20건, 검사 9종, `--baseline` 회귀 목록, `--runs` 일관성, `--dry-run`. 실제 모델 실행은 `ANTHROPIC_API_KEY` 필요.
+8. **spawn 정리** (`server/spawn.js`) — Windows에서 `.cmd` 래퍼(npx)만 셸로, ffmpeg·node는 셸 없이. DEP0190 경고 제거. 렌더 모듈 8개의 중복 `run()` 통합.
+9. **묵은 후보 정리** — Docker Desktop 실기동 검증 ✅(`compose up` → health 200 / 키 없이 401 / 키로 200 / mcp·dashboard 200, 이미지 267MB) · `claude mcp add` 시연은 패키지 README의 한 줄로 대체 · 두뇌퀴즈 공장 재실행 ✅(92초, 59초 MP4) — 오늘 손댄 뒤에도 TTS·Remotion·ffmpeg 그대로 동작.
+10. 기술 글 [n8n을 직접 만들며 배운 설계 결정 6가지](docs/blog/2026-09-n8n-design-decisions.md).
+
+⚠️ **YouTube 리프레시 토큰 만료**(`invalid_grant` — 동의 화면이 "테스트" 상태면 7일 제한). 업로드 노드·관제실 통계·검증 댓글 봇은 재발급 전까지 동작하지 않음. 계속 쓰려면 GCP 동의 화면을 "프로덕션"으로 바꾼 뒤 재발급.

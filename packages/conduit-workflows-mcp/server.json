@@ -1,0 +1,39 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.rhlfur2055-prog/conduit-workflows",
+  "title": "Conduit Workflows",
+  "description": "Use your Conduit workflows as MCP tools in Claude Desktop, Claude Code, Cursor and more",
+  "repository": {
+    "url": "https://github.com/rhlfur2055-prog/conduit",
+    "source": "github",
+    "subfolder": "packages/conduit-workflows-mcp"
+  },
+  "websiteUrl": "https://github.com/rhlfur2055-prog/conduit/tree/main/packages/conduit-workflows-mcp#readme",
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "conduit-workflows-mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "CONDUIT_URL",
+          "description": "Conduit server URL (default http://localhost:8787)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "CONDUIT_API_KEY",
+          "description": "Same value as the Conduit server's CONDUIT_API_KEY, if the server has one set",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

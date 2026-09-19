@@ -45,11 +45,23 @@ export function getPath(obj, path) {
     .reduce((o, k) => (o == null ? undefined : o[k]), obj);
 }
 
-/** 정렬/중복제거 비교용 안정적 키 */
+/** 정렬/중복제거 비교용 안정적 키 — 중첩 객체까지 키를 정렬해 직렬화 */
 export function stableKey(value) {
   if (value === undefined || value === null) return '';
   if (typeof value === 'object') {
-    try { return JSON.stringify(value, Object.keys(value).sort()); } catch { return String(value); }
+    try { return JSON.stringify(sortKeysDeep(value)); } catch { return String(value); }
   }
   return String(value);
+}
+
+// JSON.stringify 의 배열 replacer 는 모든 깊이에 같은 키 목록을 적용해
+// 중첩 객체의 다른 키를 버린다 — 그래서 직접 정렬한 사본을 만든다.
+function sortKeysDeep(value) {
+  if (Array.isArray(value)) return value.map(sortKeysDeep);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const k of Object.keys(value).sort()) out[k] = sortKeysDeep(value[k]);
+    return out;
+  }
+  return value;
 }

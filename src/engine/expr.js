@@ -20,7 +20,8 @@ export function evalExpr(code, ctx) {
 export function resolveString(str, ctx) {
   if (typeof str !== 'string' || !str.includes('{{')) return str;
   const whole = str.match(/^\s*\{\{([\s\S]+)\}\}\s*$/);
-  if (whole) return evalExpr(whole[1].trim(), ctx);
+  // "{{ a }} {{ b }}" 도 위 패턴에 걸리므로, 안쪽에 다른 {{ 가 없을 때만 단일 표현식으로 본다
+  if (whole && !whole[1].includes('{{')) return evalExpr(whole[1].trim(), ctx);
   return str.replace(/\{\{([\s\S]+?)\}\}/g, (_, e) => {
     const v = evalExpr(e.trim(), ctx);
     return v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);

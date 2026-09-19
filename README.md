@@ -20,6 +20,7 @@ Vite + React + [React Flow(@xyflow/react)](https://reactflow.dev) 로 만들었�
 | **스택** | Vite · React · React Flow / Express · Node.js / Docker |
 | **규모** | 노드 50여 종 (트리거·동작·흐름 제어·배열·연동·AI·영상·수익화·출력) · 프론트+서버 약 6,000줄 |
 | **실사용** | 매일 09:00 크론 → 데이터 수집 → 스크립트 생성 → TTS → Remotion 렌더 → YouTube 업로드까지 무인 파이프라인으로 실제 채널 운영 |
+| **테스트** | Vitest 69개 — 실행 엔진(실행 순서·분기·배치·병렬·재시도·오류 격리), 표현식, 재시도 정책, 노드 동작. `npm test` |
 
 **설계에서 신경 쓴 것**
 
@@ -30,6 +31,10 @@ Vite + React + [React Flow(@xyflow/react)](https://reactflow.dev) 로 만들었�
 - **외부 연동** — YouTube Data API(OAuth 2.0 리프레시 토큰, resumable 업로드), Slack, 쿠팡 파트너스(HMAC 서명), 알리익스프레스(TOP 프로토콜), 링크프라이스, Blogger, Edge TTS.
 
 **바로 실행**: 아래 [Docker로 실행](#docker로-실행-권장--단일-컨테이너) 참고. 개발 모드는 `npm install` 후 `npm run dev`(프론트 5173) + `node server/index.js`(API 8787).
+
+**테스트**: `npm test` — `tests/engine/` 에 엔진 단위·통합 테스트. 테스트를 붙이면서 실제 버그 두 개를 찾아 고쳤습니다.
+- 중복 제거 노드가 중첩 객체를 비교하지 못해 `{u:{id:1}}` 과 `{u:{id:2}}` 를 같은 아이템으로 지우던 문제 (`JSON.stringify` 배열 replacer 가 모든 깊이에 같은 키 목록을 적용하는 동작 때문)
+- `"{{ a }} {{ b }}"` 처럼 표현식 두 개로만 된 문자열이 `undefined` 가 되던 문제 (단일 표현식 판별 정규식이 두 개를 하나로 잡음)
 
 ## Docker로 실행 (권장 · 단일 컨테이너)
 

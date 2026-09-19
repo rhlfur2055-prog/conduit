@@ -16,6 +16,44 @@ Vite + React + [React Flow(@xyflow/react)](https://reactflow.dev) 로 만들었�
 
 > 이전 이름은 FlowForge 였습니다. 브랜드명은 `src/components/Sidebar.jsx` 의 `sb-word` 한 곳에서 바꿀 수 있어요.
 
+## Conduit으로 만든 것
+
+### 1. 유튜브 쇼츠 자동 제작 → 실제 채널에 게시
+
+`트리거(수동 · 매일 09:00 스케줄)` → `주제·데이터 선택` → `대본` → `TTS 내레이션` → `영상 렌더(Remotion)` → `YouTube 업로드`
+
+Conduit 서버의 영상 모듈(`server/tts.js` · `server/render-*.js` · YouTube 업로드)로 만든 쇼츠입니다. 내레이션 생성, 화면과 낭독 싱크, 렌더, YouTube Data API(OAuth 2.0) 업로드까지 코드가 처리하고, 사람은 주제를 고르고 공개 전에 확인했습니다. 아래 영상들은 실제 채널에 공개돼 있습니다.
+
+| [![착시 테스트](https://img.youtube.com/vi/gcmHlHI0ias/mqdefault.jpg)](https://youtu.be/gcmHlHI0ias) | [![색각 테스트](https://img.youtube.com/vi/LA27Sm5cgTM/mqdefault.jpg)](https://youtu.be/LA27Sm5cgTM) | [![집중력 테스트](https://img.youtube.com/vi/1lRyPFZgUqQ/mqdefault.jpg)](https://youtu.be/1lRyPFZgUqQ) | [![청력 테스트](https://img.youtube.com/vi/fbCpICUyjKk/mqdefault.jpg)](https://youtu.be/fbCpICUyjKk) |
+|---|---|---|---|
+| 회전 실루엣 착시 · 조회수 1,421 | 숨은 숫자 색각 · 조회수 1,551 | 무주의 맹시 · 조회수 1,789 | 청력 나이 · 조회수 4,093 |
+
+*조회수는 2026-09-19 기준.*
+
+### 2. 같은 영상을 4개 언어로 한 번에
+
+`다국어 쇼츠` 노드 하나로 화면·정답은 그대로 두고 문구·내레이션만 한국어·영어·일본어·스페인어로 바꿔 렌더합니다. 한국어·영어 두 편을 약 2분 30초에 렌더했습니다.
+
+### 3. Claude가 Conduit 워크플로를 직접 실행 (MCP)
+
+Conduit 서버를 MCP 서버로 등록하면, 저장된 워크플로가 Claude의 도구(`run_<id>`)가 됩니다. "주문 처리 워크플로 돌려줘"라고 말하면 Claude가 워크플로를 실행하고 결과를 받아옵니다. 반대로 외부 MCP 서버의 도구를 Conduit 노드에서 부를 수도 있습니다. ([MCP 지원](#mcp-지원-양방향))
+
+### 4. 실제 사이트에 붙이는 방법 — 예: 쇼핑몰 주문
+
+맨 위 데모 GIF의 흐름에서 트리거만 `Webhook 트리거`(경로 `/new-order`)로 바꾸고 서버에 저장·활성화하면, 쇼핑몰이 주문마다 보내는 요청으로 같은 처리가 돌아갑니다.
+
+```bash
+curl -X POST http://localhost:8787/webhook/new-order \
+  -H "Content-Type: application/json" \
+  -d '{"customer": "김민수", "amount": 42000}'
+```
+
+웹훅 트리거는 Slack·GitHub·Stripe 방식의 HMAC 서명 검증을 지원해서, 요청이 진짜 그 서비스에서 왔는지 확인한 뒤에만 실행합니다. VIP 주문은 `Slack 메시지` 노드로 알리고, 고객 문의라면 `AI 구조화 추출` 노드로 분류해 `Notion 페이지 생성` 노드에 쌓는 식으로 확장할 수 있습니다.
+
+### 그 밖에 만들어 둔 것 (API 키만 넣으면 동작)
+
+- 쿠팡 파트너스·알리익스프레스·링크프라이스 상품 조회 → 광고 표기 문구 자동 삽입 → Blogger 초안 발행 — 시뮬레이션으로 전체 흐름 검증, 실제 키는 미발급
+
 ## 한눈에 보기
 
 | | |
@@ -23,7 +61,7 @@ Vite + React + [React Flow(@xyflow/react)](https://reactflow.dev) 로 만들었�
 | **무엇** | n8n / Make 방식의 노드 기반 워크플로 자동화 플랫폼 (개인 프로젝트, 2026.08 ~) |
 | **스택** | Vite · React · React Flow / Express · Node.js / Docker |
 | **규모** | 노드 50여 종 (트리거·동작·흐름 제어·배열·연동·AI·영상·수익화·출력) · 프론트+서버 약 6,000줄 |
-| **실사용** | 매일 09:00 크론 → 데이터 수집 → 스크립트 생성 → TTS → Remotion 렌더 → YouTube 업로드까지 무인 파이프라인으로 실제 채널 운영 |
+| **실사용** | 쇼츠 자동 제작 파이프라인(스케줄 → 대본 → TTS → Remotion 렌더 → YouTube API 업로드)으로 만든 영상 4편이 실제 채널에 공개돼 있음 — [Conduit으로 만든 것](#conduit으로-만든-것) |
 | **테스트** | Vitest 69개 — 실행 엔진(실행 순서·분기·배치·병렬·재시도·오류 격리), 표현식, 재시도 정책, 노드 동작. `npm test` |
 
 **설계에서 신경 쓴 것**

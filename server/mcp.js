@@ -22,6 +22,25 @@ function getConfig(name) {
 
 const send = (client, msg) => client.proc.stdin.write(JSON.stringify(msg) + '\n');
 
+// Windows 에서 npx 같은 .cmd 래퍼를 실행하려면 셸이 필요하다. 그런데 shell:true 에 인자 배열을 넘기면
+// Node 가 이스케이프 없이 이어 붙인다(DEP0190). 그래서 인자를 직접 따옴표 처리한 한 줄 명령을 만든다.
+export function quoteForCmd(arg) {
+  const s = String(arg);
+  if (s !== '' && /^[\w\-.:\\/=@+,]+$/.test(s)) return s;
+  return '"' + s.replace(/"/g, '\\"') + '"';
+}
+export function buildCommandLine(command, args) {
+  return [command, ...args].map(quoteForCmd).join(' ');
+}
+
+function spawnServer(command, args) {
+  const stdio = ['pipe', 'pipe', 'pipe'];
+  if (process.platform === 'win32') {
+    return spawn(buildCommandLine(command, args), { stdio, shell: true, windowsHide: true });
+  }
+  return spawn(command, args, { stdio });
+}
+
 function request(client, method, params, timeoutMs = 20000) {
   const id = client.nextId++;
   return new Promise((resolve, reject) => {
@@ -41,10 +60,7 @@ async function connect(cfg) {
   const args = typeof cfg.args === 'string'
     ? cfg.args.split(/\s+/).filter(Boolean)
     : (cfg.args || []);
-  const proc = spawn(cfg.command, args, {
-    stdio: ['pipe', 'pipe', 'pipe'],
-    shell: process.platform === 'win32', // npx 등 .cmd 실행 지원
-  });
+  const proc = spawnServer(cfg.command, args);
   const client = { proc, pending: new Map(), nextId: 1, buffer: '' };
 
   proc.stdout.on('data', (d) => {

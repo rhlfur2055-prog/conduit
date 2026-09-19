@@ -62,7 +62,7 @@ curl -X POST http://localhost:8787/webhook/new-order \
 | **스택** | Vite · React · React Flow / Express · Node.js / Docker |
 | **규모** | 노드 50여 종 (트리거·동작·흐름 제어·배열·연동·AI·영상·수익화·출력) · 프론트+서버 약 6,000줄 |
 | **실사용** | 쇼츠 자동 제작 파이프라인(스케줄 → 대본 → TTS → Remotion 렌더 → YouTube API 업로드)으로 만든 영상 4편이 실제 채널에 공개돼 있음 — [Conduit으로 만든 것](#conduit으로-만든-것) |
-| **테스트** | Vitest 100개 — 실행 엔진(실행 순서·분기·배치·병렬·재시도·오류 격리), 표현식, 재시도 정책, 노드 동작, API 인증(실제 HTTP), 코드 실행 정책. `npm test` |
+| **테스트** | Vitest 111개 — 실행 엔진(실행 순서·분기·배치·병렬·재시도·오류 격리), 표현식, 재시도 정책, 노드 동작, API 인증·라우트 통합(실제 HTTP), 코드 실행 정책. `npm test` |
 | **보안** | `/api`·`/mcp` API 키 인증, 키 미설정 시 로컬 전용, 외부 서버에선 코드 실행 차단(코드 노드·JS 표현식·에이전트 도구), 웹훅 HMAC 서명 검증, 크리덴셜 암호화 저장 — [API 인증](#api-인증) |
 
 **설계에서 신경 쓴 것**
@@ -108,6 +108,29 @@ curl -X POST http://localhost:8787/webhook/new-order \
 - 브라우저 캔버스에서 돌리는 실행은 내 컴퓨터 안이라 제한하지 않습니다.
 - 경로 표현식은 `new Function` 없이 직접 해석하고, `constructor`·`__proto__`·프로토타입 메서드는 읽지 않습니다.
 - 현재 상태는 `/api/health` 의 `code: on|off` 로 확인. 구현: `server/policy.js`, `src/engine/expr.js`(evalPath), 테스트: `tests/engine/policy.test.js`, `tests/server/policy.test.js`
+
+## 서버 구조
+
+처음엔 `server/index.js` 한 파일(약 500줄)에 라우트·실행·크론이 다 있었습니다. 먼저 실제 HTTP 요청으로 동작을 고정하는 통합 테스트(`tests/server/routes.test.js`)를 붙인 뒤, 동작을 바꾸지 않고 책임별로 나눴습니다.
+
+```
+server/
+  index.js        진입점 — env 로드 → 브리지 주입 → 앱 생성 → listen (36줄)
+  app.js          Express 조립: 미들웨어 → 공개 라우트 → 인증 게이트 → 보호 라우트 → 정적 파일
+  runtime.js      execute() · Error Trigger 발동 · 크론 스케줄러
+  bridges.js      LLM·연동·에이전트 등 서버 전용 기능을 공용 엔진에 globalThis 로 주입
+  auth.js         API 키 인증          policy.js   코드 실행 정책
+  routes/
+    workflows.js  /api/workflows · /api/run · /api/executions · /api/credentials
+    webhooks.js   /webhook/*  (공개 · HMAC 서명 검증 + 멱등성)
+    mcp.js        /api/mcp/tools (외부 MCP 도구 목록) · /mcp (Conduit = MCP 서버)
+    dlq.js        /api/dlq · /api/idempotency
+    channel.js    /api/channel/stats · /dashboard
+  store.js        JSON 파일 저장소 + 크리덴셜 AES-256-GCM (CONDUIT_DATA_DIR 로 위치 변경 가능)
+```
+
+- 테스트는 `CONDUIT_DATA_DIR` 을 임시 폴더로 잡아 실제 `server/data` 를 건드리지 않습니다.
+- 라우터는 모두 `runtime.execute()` 를 거치므로, 실행 기록·DLQ·Error Trigger 가 웹훅·MCP·재실행 어디서 시작해도 똑같이 남습니다.
 
 ## Docker로 실행 (권장 · 단일 컨테이너)
 

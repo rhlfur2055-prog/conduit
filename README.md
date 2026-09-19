@@ -10,6 +10,25 @@ Vite + React + [React Flow(@xyflow/react)](https://reactflow.dev) 로 만들었�
 
 > 이전 이름은 FlowForge 였습니다. 브랜드명은 `src/components/Sidebar.jsx` 의 `sb-word` 한 곳에서 바꿀 수 있어요.
 
+## 한눈에 보기
+
+| | |
+|---|---|
+| **무엇** | n8n / Make 방식의 노드 기반 워크플로 자동화 플랫폼 (개인 프로젝트, 2026.08 ~) |
+| **스택** | Vite · React · React Flow / Express · Node.js / Docker |
+| **규모** | 노드 50여 종 (트리거·동작·흐름 제어·배열·연동·AI·영상·수익화·출력) · 프론트+서버 약 6,000줄 |
+| **실사용** | 매일 09:00 크론 → 데이터 수집 → 스크립트 생성 → TTS → Remotion 렌더 → YouTube 업로드까지 무인 파이프라인으로 실제 채널 운영 |
+
+**설계에서 신경 쓴 것**
+
+- **엔진 공용화** — `src/engine/` 실행 코어를 브라우저와 서버가 같이 씁니다. 서버 전용 기능(LLM·외부 연동·에이전트)은 `globalThis` 브리지로 주입하고, 브라우저에서는 시뮬레이션 응답으로 대체합니다. 같은 워크플로를 캔버스에서 미리 돌려 보고 서버에 올리면 그대로 동작합니다.
+- **아이템 배열 데이터 모델** — n8n처럼 노드 사이를 아이템 배열이 흐르고, 일반 노드는 단일 아이템만 다루면 엔진이 반복합니다. IF/Switch/필터는 아이템 단위로 분기하고, Continue On Fail 시 실패 아이템만 DLQ로 격리됩니다.
+- **MCP 양방향** — 저장된 워크플로가 MCP 도구(`run_<id>`)로 노출되어 Claude가 직접 실행할 수 있고, 반대로 외부 MCP 서버(stdio)의 도구를 노드·에이전트에서 호출합니다.
+- **운영 기능** — 노드별 재시도·실패 무시·배치 크기·배치 지연, 실행 기록, DLQ UI, 크리덴셜 암호화 저장(`.enckey`), 크론 스케줄러, 웹훅 트리거.
+- **외부 연동** — YouTube Data API(OAuth 2.0 리프레시 토큰, resumable 업로드), Slack, 쿠팡 파트너스(HMAC 서명), 알리익스프레스(TOP 프로토콜), 링크프라이스, Blogger, Edge TTS.
+
+**바로 실행**: 아래 [Docker로 실행](#docker로-실행-권장--단일-컨테이너) 참고. 개발 모드는 `npm install` 후 `npm run dev`(프론트 5173) + `node server/index.js`(API 8787).
+
 ## Docker로 실행 (권장 · 단일 컨테이너)
 
 ```bash

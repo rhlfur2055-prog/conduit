@@ -1,0 +1,51 @@
+{
+  "name": "고객 문의 분류",
+  "description": "쇼핑몰 고객 문의를 category(배송·환불·교환·상품문의·결제·기타)와 urgent(시급 여부)로 구조화한다. 프롬프트를 바꾸면 이 20건으로 통과율을 다시 잰다.",
+  "node": {
+    "kind": "aiExtract",
+    "params": {
+      "model": "claude-haiku-4-5-20251001",
+      "instruction": "고객 문의를 분류한다. category 는 배송, 환불, 교환, 상품문의, 결제, 기타 중 하나다 (반품·환불금 문의는 환불, 다른 색·사이즈로 바꾸는 요청은 교환). urgent 는 오늘/당장/급함처럼 시급함이 드러나면 true, 아니면 false. 반드시 {\"category\": \"...\", \"urgent\": true|false} 형식의 JSON 만 출력한다.",
+      "target": "extracted"
+    }
+  },
+  "checks": [
+    { "path": "extracted", "type": "object", "hasKeys": ["category", "urgent"] },
+    { "path": "extracted.category", "oneOf": ["배송", "환불", "교환", "상품문의", "결제", "기타"] },
+    { "path": "extracted.urgent", "type": "boolean" }
+  ],
+  "cases": [
+    { "name": "배송 지연", "input": { "text": "주문한 지 일주일이 지났는데 아직 배송이 시작도 안 됐어요" }, "checks": [ { "path": "extracted.category", "equals": "배송" }, { "path": "extracted.urgent", "equals": false } ] },
+    { "name": "오늘 도착 문의(급함)", "input": { "text": "오늘 안에 꼭 받아야 하는데 지금 어디쯤 왔나요? 급해요" }, "checks": [ { "path": "extracted.category", "equals": "배송" }, { "path": "extracted.urgent", "equals": true } ] },
+    { "name": "사이즈 교환", "input": { "text": "받아보니 사이즈가 안 맞아서 한 치수 큰 걸로 바꾸고 싶습니다" }, "checks": [ { "path": "extracted.category", "equals": "교환" }, { "path": "extracted.urgent", "equals": false } ] },
+    { "name": "파손 환불", "input": { "text": "상품이 파손돼서 왔어요. 환불해 주세요" }, "checks": [ { "path": "extracted.category", "equals": "환불" }, { "path": "extracted.urgent", "equals": false } ] },
+    { "name": "결제 누락(급함)", "input": { "text": "결제했는데 주문 내역에 안 뜨고 카드값만 빠져나갔어요. 당장 확인 부탁드려요" }, "checks": [ { "path": "extracted.category", "equals": "결제" }, { "path": "extracted.urgent", "equals": true } ] },
+    { "name": "색상 차이 문의", "input": { "text": "이 제품 색상이 화면이랑 실제랑 많이 다른가요?" }, "checks": [ { "path": "extracted.category", "equals": "상품문의" }, { "path": "extracted.urgent", "equals": false } ] },
+    { "name": "재입고 문의", "input": { "text": "재입고는 언제 되나요?" }, "checks": [ { "path": "extracted.category", "equals": "상품문의" }, { "path": "extracted.urgent", "equals": false } ] },
+    { "name": "단순 변심 반품", "input": { "text": "단순 변심인데 반품 가능한가요? 배송비는 누가 내나요?" }, "checks": [ { "path": "extracted.category", "equals": "환불" }, { "path": "extracted.urgent", "equals": false } ] },
+    { "name": "쿠폰 미적용", "input": { "text": "쿠폰을 적용했는데 할인이 안 됐어요" }, "checks": [ { "path": "extracted.category", "equals": "결제" }, { "path": "extracted.urgent", "equals": false } ] },
+    { "name": "배송지 변경(급함)", "input": { "text": "배송지를 잘못 입력했어요. 아직 출발 전이면 바꿔 주세요. 빨리요!" }, "checks": [ { "path": "extracted.category", "equals": "배송" }, { "path": "extracted.urgent", "equals": true } ] },
+    { "name": "현금영수증", "input": { "text": "영수증(현금영수증) 발급은 어떻게 하나요?" }, "checks": [ { "path": "extracted.category", "equals": "결제" }, { "path": "extracted.urgent", "equals": false } ] },
+    { "name": "세탁 방법", "input": { "text": "세탁 방법이 어떻게 되나요? 드라이만 되나요?" }, "checks": [ { "path": "extracted.category", "equals": "상품문의" }, { "path": "extracted.urgent", "equals": false } ] },
+    { "name": "회원 탈퇴", "input": { "text": "회원 탈퇴하고 싶어요" }, "checks": [ { "path": "extracted.category", "equals": "기타" }, { "path": "extracted.urgent", "equals": false } ] },
+    { "name": "환불금 미입금", "input": { "text": "주문 취소했는데 환불금이 아직 안 들어왔어요. 2주째예요" }, "checks": [ { "path": "extracted.category", "equals": "환불" }, { "path": "extracted.urgent", "equals": false } ] },
+    { "name": "송장 조회 불가", "input": { "text": "송장번호 조회가 안 돼요" }, "checks": [ { "path": "extracted.category", "equals": "배송" }, { "path": "extracted.urgent", "equals": false } ] },
+    { "name": "사용법 문의", "input": { "text": "제품 설명서에 없는 기능이 있는데 사용법 알려 주세요" }, "checks": [ { "path": "extracted.category", "equals": "상품문의" }, { "path": "extracted.urgent", "equals": false } ] },
+    { "name": "중복 결제", "input": { "text": "같은 상품을 두 번 결제한 것 같아요. 하나는 취소해 주세요" }, "checks": [ { "path": "extracted.category", "equals": "결제" }, { "path": "extracted.urgent", "equals": false } ] },
+    { "name": "문 앞 분실", "input": { "text": "택배 기사님이 문 앞에 두고 갔는데 없어졌어요. 어떻게 해야 하나요?" }, "checks": [ { "path": "extracted.category", "equals": "배송" }, { "path": "extracted.urgent", "equals": false } ] },
+    { "name": "색상 교환", "input": { "text": "다른 색으로 교환하려면 어떻게 하나요?" }, "checks": [ { "path": "extracted.category", "equals": "교환" }, { "path": "extracted.urgent", "equals": false } ] },
+    { "name": "행사 전 배송(급함)", "input": { "text": "내일 행사에 입어야 하는데 오늘 출발했나요? 급합니다" }, "checks": [ { "path": "extracted.category", "equals": "배송" }, { "path": "extracted.urgent", "equals": true } ] }
+  ],
+  "dryRun": {
+    "_note": "--dry-run 전용. 키워드로 답을 지어내는 가짜 LLM 규칙이며 모델 품질과는 무관하다.",
+    "defaults": { "category": "기타", "urgent": false },
+    "rules": [
+      { "keywords": ["환불", "반품", "파손"], "output": { "category": "환불" } },
+      { "keywords": ["교환", "바꾸고", "치수"], "output": { "category": "교환" } },
+      { "keywords": ["결제", "카드", "쿠폰", "영수증"], "output": { "category": "결제" } },
+      { "keywords": ["배송", "택배", "송장", "출발", "도착", "어디쯤"], "output": { "category": "배송" } },
+      { "keywords": ["색상", "재입고", "세탁", "사용법", "기능"], "output": { "category": "상품문의" } },
+      { "keywords": ["급해", "급합", "당장", "오늘 안에", "빨리"], "output": { "urgent": true } }
+    ]
+  }
+}

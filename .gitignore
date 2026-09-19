@@ -21,6 +21,8 @@ server/data/
 *.bak?
 service-account*.json
 .claude/
+# 평가 리포트 (실행 결과물)
+evals/reports/
 
 # Editor directories and files
 .vscode/*

@@ -568,7 +568,7 @@ export const NODE_TYPES = {
     summary: (p) => `${p.model} 프롬프트`,
     run: async (i, p) => {
       const r = await callLLM({ system: p.system, prompt: p.prompt, model: p.model });
-      return { main: { ...(i.main || {}), aiText: r.text, _ai: { model: p.model, simulated: !!r.simulated } } };
+      return { main: { ...(i.main || {}), aiText: r.text, _ai: { model: p.model, simulated: !!r.simulated, usage: r.usage } } };
     },
   },
   aiExtract: {
@@ -589,7 +589,7 @@ export const NODE_TYPES = {
       });
       let parsed;
       try { parsed = JSON.parse(r.text); } catch { parsed = { raw: r.text }; }
-      return { main: { ...(i.main || {}), [p.target]: parsed, _ai: { simulated: !!r.simulated } } };
+      return { main: { ...(i.main || {}), [p.target]: parsed, _ai: { model: p.model, simulated: !!r.simulated, usage: r.usage } } };
     },
   },
   aiAgent: {

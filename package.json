@@ -9,6 +9,7 @@
     "lint": "oxlint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "eval": "node server/evals.js",
     "preview": "vite preview"
   },
   "dependencies": {

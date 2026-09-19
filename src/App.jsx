@@ -16,7 +16,7 @@ import '@xyflow/react/dist/style.css';
 import { NODE_TYPES } from './engine/nodeTypes.js';
 import { runFlow } from './engine/executor.js';
 import { FlowActions } from './flowActions.js';
-import { api } from './api.js';
+import { api, authFetch, getApiKey, setApiKey } from './api.js';
 import { Icon } from './ui/icons.jsx';
 import FlowNode from './components/FlowNode.jsx';
 import Sidebar from './components/Sidebar.jsx';
@@ -120,6 +120,17 @@ function Editor() {
     api.listWorkflows().then(setWfList).catch(() => setWfList([]));
   }, []);
   useEffect(() => { if (serverUp) refreshWorkflows(); }, [serverUp, refreshWorkflows]);
+
+  // 서버가 CONDUIT_API_KEY 로 보호될 때 쓸 키 입력 (이 브라우저에만 저장)
+  const openSettings = useCallback(() => {
+    const next = window.prompt(
+      '서버 API 키 — 서버의 CONDUIT_API_KEY 와 같은 값을 넣으세요.\n비워 두고 확인하면 저장된 키를 지웁니다.',
+      getApiKey(),
+    );
+    if (next === null) return;
+    setApiKey(next.trim());
+    if (serverUp) refreshWorkflows();
+  }, [serverUp, refreshWorkflows]);
 
   // 백엔드 상태 폴링
   useEffect(() => {
@@ -289,11 +300,15 @@ function Editor() {
         nodes: nodes.map((n) => ({ id: n.id, data: { kind: n.data.kind, params: n.data.params } })),
         edges,
       };
-      const res = await fetch('/api/run/stream', {
+      const res = await authFetch('/api/run/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(snapshot),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(`${res.status} ${err.error || ''} — 사이드바 "설정"에서 API 키를 확인하세요.`);
+      }
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = '';
@@ -395,7 +410,12 @@ function Editor() {
 
   const deleteWorkflowById = useCallback(async (id, name) => {
     if (!confirm(`"${name}" 워크플로를 삭제할까요?`)) return;
-    await api.deleteWorkflow(id);
+    try {
+      await api.deleteWorkflow(id);
+    } catch (e) {
+      setLog([{ kind: 'err', msg: '삭제 실패: ' + e.message }]);
+      return;
+    }
     if (id === currentId) { setCurrentId(null); }
     refreshWorkflows();
   }, [currentId, refreshWorkflows]);
@@ -443,6 +463,7 @@ function Editor() {
           onOpenCredentials={() => setCredOpen(true)}
           onOpenExecutions={() => setExecOpen(true)}
           onOpenDlq={() => setDlqOpen(true)}
+          onOpenSettings={openSettings}
           workflows={wfList}
           currentId={currentId}
           onSelectWorkflow={selectWorkflow}

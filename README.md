@@ -62,7 +62,8 @@ curl -X POST http://localhost:8787/webhook/new-order \
 | **스택** | Vite · React · React Flow / Express · Node.js / Docker |
 | **규모** | 노드 50여 종 (트리거·동작·흐름 제어·배열·연동·AI·영상·수익화·출력) · 프론트+서버 약 6,000줄 |
 | **실사용** | 쇼츠 자동 제작 파이프라인(스케줄 → 대본 → TTS → Remotion 렌더 → YouTube API 업로드)으로 만든 영상 4편이 실제 채널에 공개돼 있음 — [Conduit으로 만든 것](#conduit으로-만든-것) |
-| **테스트** | Vitest 69개 — 실행 엔진(실행 순서·분기·배치·병렬·재시도·오류 격리), 표현식, 재시도 정책, 노드 동작. `npm test` |
+| **테스트** | Vitest 82개 — 실행 엔진(실행 순서·분기·배치·병렬·재시도·오류 격리), 표현식, 재시도 정책, 노드 동작, API 인증(실제 HTTP). `npm test` |
+| **보안** | `/api`·`/mcp` API 키 인증, 키 미설정 시 로컬 전용, 웹훅 HMAC 서명 검증, 크리덴셜 암호화 저장 — [API 인증](#api-인증) |
 
 **설계에서 신경 쓴 것**
 
@@ -74,18 +75,33 @@ curl -X POST http://localhost:8787/webhook/new-order \
 
 **바로 실행**: 아래 [Docker로 실행](#docker로-실행-권장--단일-컨테이너) 참고. 개발 모드는 `npm install` 후 `npm run dev`(프론트 5173) + `node server/index.js`(API 8787).
 
-**테스트**: `npm test` — `tests/engine/` 에 엔진 단위·통합 테스트. 테스트를 붙이면서 실제 버그 두 개를 찾아 고쳤습니다.
+**테스트**: `npm test` — `tests/engine/` 에 엔진 단위·통합 테스트, `tests/server/` 에 API 인증 테스트. 엔진 테스트를 붙이면서 실제 버그 두 개를 찾아 고쳤습니다.
 - 중복 제거 노드가 중첩 객체를 비교하지 못해 `{u:{id:1}}` 과 `{u:{id:2}}` 를 같은 아이템으로 지우던 문제 (`JSON.stringify` 배열 replacer 가 모든 깊이에 같은 키 목록을 적용하는 동작 때문)
 - `"{{ a }} {{ b }}"` 처럼 표현식 두 개로만 된 문자열이 `undefined` 가 되던 문제 (단일 표현식 판별 정규식이 두 개를 하나로 잡음)
+
+## API 인증
+
+코드 노드는 임의 JavaScript를 실행하기 때문에, 인증 없이 외부에 열리면 누구나 서버에서 코드를 돌릴 수 있습니다. 그래서 기본값을 "전부 허용"이 아니라 **"이 컴퓨터에서 온 요청만 허용"**으로 두었습니다.
+
+| `CONDUIT_API_KEY` | `/api/*` · `/mcp` | `/api/health` · `/webhook/*` · 화면 |
+|---|---|---|
+| 설정함 | `Authorization: Bearer <키>` 또는 `X-API-Key` 가 맞아야 통과, 아니면 **401** | 공개 |
+| 비워 둠 | 127.0.0.1 에서 온 요청만 통과, 외부는 **403** | 공개 |
+
+- 같은 서버의 Nginx 같은 프록시를 거친 요청은 주소가 127.0.0.1로 보이므로, `X-Forwarded-For` 가 붙은 요청은 로컬로 치지 않습니다.
+- 키 비교는 SHA-256 해시 후 `crypto.timingSafeEqual` 로 해서, 응답 시간으로 키를 추측할 수 없게 했습니다.
+- 웹훅은 외부 서비스가 부르는 입구라 공개하고, 노드별 HMAC 서명 검증(Slack·GitHub·Stripe 방식)으로 보호합니다.
+- 화면에서는 사이드바 **설정**에 같은 키를 넣으면 됩니다 (이 브라우저에만 저장).
+- 구현: `server/auth.js`, 테스트: `tests/server/auth.test.js` (실제 HTTP 요청으로 401·403·200 확인)
 
 ## Docker로 실행 (권장 · 단일 컨테이너)
 
 ```bash
-cp .env.example .env
+cp .env.example .env      # CONDUIT_API_KEY 를 채울 것 — 컨테이너 밖에서 오는 요청은 로컬이 아니다
 docker compose up -d --build
 ```
 
-→ http://localhost:8787 (프론트엔드 + API + 웹훅이 한 포트로 동작)
+→ http://localhost:8787 (프론트엔드 + API + 웹훅이 한 포트로 동작). 처음 열면 사이드바 **설정**에 `.env` 의 키를 입력하세요.
 
 - 데이터(워크플로·크리덴셜·실행기록·DLQ)는 named volume `conduit-data` 에 영속화됩니다.
 - ⚠️ 이 볼륨에 크리덴셜 **암호화 키(`.enckey`)**가 들어 있으니 삭제하지 마세요. 삭제 시 저장된 크리덴셜 복호화가 불가능해집니다.
@@ -115,6 +131,8 @@ Conduit 자체가 MCP 서버가 되어, **저장된 워크플로가 MCP 도구(`
 
 ```bash
 claude mcp add --transport http conduit http://localhost:8787/mcp
+# CONDUIT_API_KEY 를 설정했다면 헤더를 함께
+claude mcp add --transport http conduit http://localhost:8787/mcp --header "Authorization: Bearer <키>"
 ```
 
 이후 Claude Code/Desktop 에서 "conduit의 run_… 도구로 ○○ 워크플로 실행해줘"라고 하면

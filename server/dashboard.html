@@ -64,6 +64,12 @@
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => Number(n || 0).toLocaleString('ko-KR');
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3500); }
+// 서버가 CONDUIT_API_KEY 로 보호되면 메인 화면 "설정"에서 저장한 키를 같이 보낸다 (같은 출처라 공유됨)
+function authFetch(url, opts = {}) {
+  let key = '';
+  try { key = localStorage.getItem('conduit:apiKey') || ''; } catch {}
+  return fetch(url, { ...opts, headers: { ...(opts.headers || {}), ...(key ? { Authorization: 'Bearer ' + key } : {}) } });
+}
 
 async function loadHealth() {
   try { await fetch('/api/health').then(r => r.json()); $('server').textContent = '서버 정상'; $('server').className = 'badge b-live'; }
@@ -72,7 +78,7 @@ async function loadHealth() {
 
 async function loadStats() {
   try {
-    const d = await fetch('/api/channel/stats').then(r => r.json());
+    const d = await authFetch('/api/channel/stats').then(r => r.json());
     if (d.error) throw new Error(d.error);
     $('channelStats').innerHTML =
       '<div class="stat"><b>' + fmt(d.channel.subscriberCount) + '</b><span>구독자</span></div>' +
@@ -94,7 +100,7 @@ async function loadStats() {
 
 async function loadWorkflows() {
   try {
-    const list = await fetch('/api/workflows').then(r => r.json());
+    const list = await authFetch('/api/workflows').then(r => r.json());
     $('workflows').innerHTML = list.map(w =>
       '<div class="card"><div class="grow"><div class="title">' + w.name + '</div>' +
       '<div class="meta">' + (w.nodes ? w.nodes.length + '개 노드' : '') + '</div></div>' +
@@ -108,7 +114,7 @@ async function runWf(id, name) {
   if (!confirm('"' + name + '" 워크플로를 지금 실행할까요?\n(렌더·업로드가 포함된 워크플로는 실제로 영상을 만들거나 올릴 수 있습니다)')) return;
   toast('실행 중: ' + name + ' …');
   try {
-    const r = await fetch('/api/workflows/' + id + '/run', { method: 'POST' }).then(x => x.json());
+    const r = await authFetch('/api/workflows/' + id + '/run', { method: 'POST' }).then(x => x.json());
     toast((r.execution && r.execution.status === 'error' ? '⚠ 오류로 종료: ' : '✅ 완료: ') + name);
   } catch (e) { toast('❌ 실패: ' + e.message); }
 }

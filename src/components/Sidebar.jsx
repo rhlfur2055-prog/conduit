@@ -9,12 +9,12 @@ const NAV = [
 ];
 
 export default function Sidebar({
-  email, onNew, onOpenCredentials, onOpenExecutions, onOpenDlq,
+  email, onNew, onOpenCredentials, onOpenExecutions, onOpenDlq, onOpenSettings,
   workflows = [], currentId, onSelectWorkflow, onDeleteWorkflow,
 }) {
   const handle = (email || 'user@flowforge').split('@')[0];
   const initial = handle.charAt(0).toUpperCase();
-  const handlers = { credentials: onOpenCredentials, executions: onOpenExecutions, dlq: onOpenDlq };
+  const handlers = { credentials: onOpenCredentials, executions: onOpenExecutions, dlq: onOpenDlq, settings: onOpenSettings };
 
   return (
     <aside className="sb">

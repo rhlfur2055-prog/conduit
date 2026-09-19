@@ -15,9 +15,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// 직접 실행(node server/index.js)인지, 테스트 등에서 import 했는지
+const isMain = !!process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
 // 장시간 실행 서버 보호 — 도구/라이브러리의 미처리 오류로 프로세스가 죽지 않게
-process.on('uncaughtException', (e) => console.error('[uncaught]', e.message));
-process.on('unhandledRejection', (e) => console.error('[unhandled]', e?.message || e));
+// (import 한 쪽의 오류 처리를 가리지 않도록 직접 실행할 때만 등록)
+if (isMain) {
+  process.on('uncaughtException', (e) => console.error('[uncaught]', e.message));
+  process.on('unhandledRejection', (e) => console.error('[unhandled]', e?.message || e));
+}
 
 // .env 자동 로드 — 프로젝트 루트(.env) 우선, 없으면 server/.env
 {
@@ -34,6 +40,7 @@ process.on('unhandledRejection', (e) => console.error('[unhandled]', e?.message 
 import { runFlow } from '../src/engine/executor.js';
 import { Workflows, Executions, Credentials, ProcessedEvents, DLQ, readData, VerifiedComments } from './store.js';
 import { verifySignature, idempotencyKey } from './webhookSecurity.js';
+import { requireApiKey, authMode } from './auth.js';
 import { callLLM } from './llm.js';
 import * as integrations from './integrations.js';
 import { runAgent } from './agent.js';
@@ -84,7 +91,7 @@ globalThis.__conduitIntegrations = {
   },
 };
 
-const app = express();
+export const app = express();
 const PORT = process.env.PORT || 8787;
 app.use(cors());
 // 서명 검증을 위해 raw body 를 보존한다
@@ -209,9 +216,15 @@ function registerAll() {
   console.log(`[cron] 활성 스케줄 ${scheduled.size}개 등록`);
 }
 
-/* ---------- 라우트: 워크플로 ---------- */
-app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'Conduit', time: new Date().toISOString() }));
+/* ---------- 헬스체크 (인증 없이 공개) ---------- */
+app.get('/api/health', (_req, res) =>
+  res.json({ ok: true, name: 'Conduit', time: new Date().toISOString(), auth: authMode() }));
 
+/* ---------- 인증 — 여기부터 등록되는 /api/*, /mcp 는 키가 필요하다 ----------
+   /webhook/* 은 외부 서비스가 호출하는 입구라 공개하고, 노드별 HMAC 서명 검증으로 보호한다. */
+app.use(['/api', '/mcp'], requireApiKey());
+
+/* ---------- 라우트: 워크플로 ---------- */
 app.get('/api/workflows', (_req, res) => {
   res.json(Workflows.all().map((w) => ({
     id: w.id, name: w.name, active: w.active,
@@ -498,7 +511,12 @@ if (fs.existsSync(distDir)) {
   console.log('[static] 프론트엔드 dist 서빙 활성화');
 }
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n  Conduit 실행 중 → http://localhost:${PORT}`);
-  registerAll();
-});
+if (isMain) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n  Conduit 실행 중 → http://localhost:${PORT}`);
+    console.log(authMode() === 'api-key'
+      ? '  인증: API 키 필요 (CONDUIT_API_KEY)'
+      : '  인증: 키 미설정 — 이 컴퓨터(127.0.0.1)에서 온 요청만 허용. 외부에 열려면 CONDUIT_API_KEY 를 설정하세요.');
+    registerAll();
+  });
+}

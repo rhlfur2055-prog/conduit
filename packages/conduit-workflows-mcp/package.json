@@ -1,0 +1,44 @@
+{
+  "name": "conduit-workflows-mcp",
+  "version": "0.1.0",
+  "description": "MCP server (stdio) that exposes your Conduit workflows as tools for Claude Desktop, Claude Code, Cursor and any MCP client",
+  "type": "module",
+  "bin": {
+    "conduit-workflows-mcp": "bin/conduit-workflows-mcp.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node bin/conduit-workflows-mcp.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "conduit",
+    "workflow",
+    "automation",
+    "n8n",
+    "claude"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rhlfur2055-prog/conduit.git",
+    "directory": "packages/conduit-workflows-mcp"
+  },
+  "homepage": "https://github.com/rhlfur2055-prog/conduit/tree/main/packages/conduit-workflows-mcp#readme",
+  "bugs": "https://github.com/rhlfur2055-prog/conduit/issues",
+  "license": "MIT",
+  "author": "Donggeun Lim <rhlfur2055@gmail.com>",
+  "mcpName": "io.github.rhlfur2055-prog/conduit-workflows",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0"
+  }
+}

@@ -175,6 +175,18 @@ claude mcp add --transport http conduit http://localhost:8787/mcp
 claude mcp add --transport http conduit http://localhost:8787/mcp --header "Authorization: Bearer <키>"
 ```
 
+**stdio 로만 MCP 서버를 붙일 수 있는 클라이언트**(Claude Desktop 설정 파일, Cursor 등)에는 npm 패키지 [`conduit-workflows-mcp`](packages/conduit-workflows-mcp) 를 씁니다. Conduit 의 `/mcp` 앞에 붙는 얇은 stdio 다리이고, 도구 정의는 Conduit 한 곳에만 있습니다.
+
+```json
+{ "mcpServers": { "conduit": {
+    "command": "npx", "args": ["-y", "conduit-workflows-mcp"],
+    "env": { "CONDUIT_URL": "http://localhost:8787", "CONDUIT_API_KEY": "<키를 설정한 경우>" } } } }
+```
+
+```bash
+claude mcp add conduit -e CONDUIT_URL=http://localhost:8787 -- npx -y conduit-workflows-mcp
+```
+
 이후 Claude Code/Desktop 에서 "conduit의 run_… 도구로 ○○ 워크플로 실행해줘"라고 하면
 Claude 가 `tools/call` 로 워크플로를 실행하고 출력 노드 결과를 돌려받습니다.
 

@@ -1,5 +1,7 @@
 # Conduit — 자동화 워크플로 빌더
 
+![Conduit 캔버스](docs/screenshot-canvas.png)
+
 > **개발 일지는 문서 맨 아래 [📅 개발 일지](#-개발-일지) 참고.**
 
 n8n / Make 같은 **노드 기반 자동화 툴**을 직접 만든 프로젝트입니다.

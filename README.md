@@ -672,4 +672,4 @@ powershell -ExecutionPolicy Bypass -File C:\workflow\flowforge\start.ps1
 9. **묵은 후보 정리** — Docker Desktop 실기동 검증 ✅(`compose up` → health 200 / 키 없이 401 / 키로 200 / mcp·dashboard 200, 이미지 267MB) · `claude mcp add` 시연은 패키지 README의 한 줄로 대체 · 두뇌퀴즈 공장 재실행 ✅(92초, 59초 MP4) — 오늘 손댄 뒤에도 TTS·Remotion·ffmpeg 그대로 동작.
 10. 기술 글 [n8n을 직접 만들며 배운 설계 결정 6가지](docs/blog/2026-09-n8n-design-decisions.md).
 
-⚠️ **YouTube 리프레시 토큰 만료**(`invalid_grant` — 동의 화면이 "테스트" 상태면 7일 제한). 업로드 노드·관제실 통계·검증 댓글 봇은 재발급 전까지 동작하지 않음. 계속 쓰려면 GCP 동의 화면을 "프로덕션"으로 바꾼 뒤 재발급.
+11. **YouTube 토큰 복구** — 8월에 발급한 리프레시 토큰이 `invalid_grant`로 만료돼 있었음(동의 화면이 "테스트" 상태면 7일 제한). GCP 브랜딩에 홈페이지·[개인정보처리방침](docs/privacy-policy.md) URL과 승인 도메인을 채워 게시 상태를 **프로덕션**으로 바꾼 뒤(7일 제한 해제) 재발급. 재발급은 `node server/scripts/get-youtube-token.mjs` → 출력된 URL에서 동의 → `.env` 자동 갱신. 관제실 `/api/channel/stats` 정상 응답 확인.

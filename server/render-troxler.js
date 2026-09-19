@@ -4,7 +4,7 @@
 //      시청자의 지각에서만 색이 사라진다 (그게 이 포맷의 전부다).
 //   내레이션도 응시 구간에는 넣지 않는다 — 소리에 주의가 끌리면 시선이 흔들린다.
 // ============================================================
-import { spawn } from 'node:child_process';
+import { runCommand } from './spawn.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { txNarration, TTS_VOICE, ytMeta } from './i18n.js';
@@ -12,21 +12,7 @@ import { txNarration, TTS_VOICE, ytMeta } from './i18n.js';
 const PIPELINE_DIR = 'C:/workflow/video-pipeline';
 const OUT_DIR = path.join(PIPELINE_DIR, 'out');
 
-function run(cmd, args, cwd, timeoutMs = 10 * 60 * 1000) {
-  return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { cwd, shell: process.platform === 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
-    let out = '';
-    let err = '';
-    const t = setTimeout(() => { p.kill(); reject(new Error('시간 초과: ' + cmd)); }, timeoutMs);
-    p.on('error', (e) => { clearTimeout(t); reject(new Error(`${cmd} 스폰 실패: ${e.message}`)); });
-    p.stdout.on('data', (d) => { out += d; });
-    p.stderr.on('data', (d) => { err += d; });
-    p.on('exit', (code) => {
-      clearTimeout(t);
-      code === 0 ? resolve(out) : reject(new Error(`${cmd} 종료코드 ${code}: ${err.slice(-500)}`));
-    });
-  });
-}
+const run = (cmd, args, cwd, timeoutMs) => runCommand(cmd, args, { cwd, timeoutMs });
 
 /** 트록슬러 사라짐 렌더
  *  @param {{holdSec?:number, voice?:string, locale?:string}} opts

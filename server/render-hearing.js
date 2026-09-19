@@ -5,28 +5,14 @@
 //   ⚠️ 최종 후처리에서 loudnorm 금지 — 고주파 테스트 톤이 왜곡됨.
 //      오디오는 -c:a aac -b:a 192k 재인코딩만 수행한다.
 // ============================================================
-import { spawn } from 'node:child_process';
+import { runCommand } from './spawn.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const PIPELINE_DIR = 'C:/workflow/video-pipeline';
 const OUT_DIR = path.join(PIPELINE_DIR, 'out');
 
-function run(cmd, args, cwd, timeoutMs = 10 * 60 * 1000) {
-  return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { cwd, shell: process.platform === 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
-    let out = '';
-    let err = '';
-    const t = setTimeout(() => { p.kill(); reject(new Error('시간 초과: ' + cmd)); }, timeoutMs);
-    p.on('error', (e) => { clearTimeout(t); reject(new Error(`${cmd} 스폰 실패: ${e.message}`)); });
-    p.stdout.on('data', (d) => { out += d; });
-    p.stderr.on('data', (d) => { err += d; });
-    p.on('exit', (code) => {
-      clearTimeout(t);
-      code === 0 ? resolve(out) : reject(new Error(`${cmd} 종료코드 ${code}: ${err.slice(-500)}`));
-    });
-  });
-}
+const run = (cmd, args, cwd, timeoutMs) => runCommand(cmd, args, { cwd, timeoutMs });
 
 /* ---------- 기본 단계 (유튜브 AAC ~16kHz 컷 → 판정 기준은 16kHz까지, 17kHz는 보너스) ---------- */
 const DEFAULT_STEPS = [

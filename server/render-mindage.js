@@ -3,28 +3,14 @@
 // MindAge 쇼츠를 렌더링한다. (문장별 TTS 실측 길이가 타임라인 결정, 1:1 싱크)
 //   렌더: npx remotion render → ffmpeg 후처리(H.264 CRF23, loudnorm) → 썸네일
 // ============================================================
-import { spawn } from 'node:child_process';
+import { runCommand } from './spawn.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const PIPELINE_DIR = 'C:/workflow/video-pipeline';
 const OUT_DIR = path.join(PIPELINE_DIR, 'out');
 
-function run(cmd, args, cwd, timeoutMs = 10 * 60 * 1000) {
-  return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { cwd, shell: process.platform === 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
-    let out = '';
-    let err = '';
-    const t = setTimeout(() => { p.kill(); reject(new Error('시간 초과: ' + cmd)); }, timeoutMs);
-    p.on('error', (e) => { clearTimeout(t); reject(new Error(`${cmd} 스폰 실패: ${e.message}`)); });
-    p.stdout.on('data', (d) => { out += d; });
-    p.stderr.on('data', (d) => { err += d; });
-    p.on('exit', (code) => {
-      clearTimeout(t);
-      code === 0 ? resolve(out) : reject(new Error(`${cmd} 종료코드 ${code}: ${err.slice(-500)}`));
-    });
-  });
-}
+const run = (cmd, args, cwd, timeoutMs) => runCommand(cmd, args, { cwd, timeoutMs });
 
 const DEFAULT_GRADES = [
   { range: '3~4점', label: '정신연령 45세, 애늙은이' },

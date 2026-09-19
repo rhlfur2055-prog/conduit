@@ -4,7 +4,7 @@
 //   화면 문구·내레이션 모두 다국어(ko/en/ja/es). 시각(손 도식)은 언어 무관.
 //   ⚠️ 수치는 server/i18n.js DR 주석의 검증본만 사용할 것 (no-fake-stats).
 // ============================================================
-import { spawn } from 'node:child_process';
+import { runCommand } from './spawn.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { drNarration, TTS_VOICE, ytMeta } from './i18n.js';
@@ -12,21 +12,7 @@ import { drNarration, TTS_VOICE, ytMeta } from './i18n.js';
 const PIPELINE_DIR = 'C:/workflow/video-pipeline';
 const OUT_DIR = path.join(PIPELINE_DIR, 'out');
 
-function run(cmd, args, cwd, timeoutMs = 10 * 60 * 1000) {
-  return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { cwd, shell: process.platform === 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
-    let out = '';
-    let err = '';
-    const t = setTimeout(() => { p.kill(); reject(new Error('시간 초과: ' + cmd)); }, timeoutMs);
-    p.on('error', (e) => { clearTimeout(t); reject(new Error(`${cmd} 스폰 실패: ${e.message}`)); });
-    p.stdout.on('data', (d) => { out += d; });
-    p.stderr.on('data', (d) => { err += d; });
-    p.on('exit', (code) => {
-      clearTimeout(t);
-      code === 0 ? resolve(out) : reject(new Error(`${cmd} 종료코드 ${code}: ${err.slice(-500)}`));
-    });
-  });
-}
+const run = (cmd, args, cwd, timeoutMs) => runCommand(cmd, args, { cwd, timeoutMs });
 
 /** 2D:4D 손가락 길이비 렌더
  *  @param {{voice?:string, locale?:string}} opts

@@ -3,28 +3,14 @@
 // 데이터 랭킹 쇼츠를 실제 렌더링한다. (n8n은 외부 유료 API가 필요한 부분)
 //   렌더: npx remotion render → ffmpeg 후처리(H.264 CRF23, faststart) → 썸네일
 // ============================================================
-import { spawn } from 'node:child_process';
+import { runCommand } from './spawn.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const PIPELINE_DIR = 'C:/workflow/video-pipeline';
 const OUT_DIR = path.join(PIPELINE_DIR, 'out');
 
-function run(cmd, args, cwd, timeoutMs = 10 * 60 * 1000) {
-  return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { cwd, shell: process.platform === 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
-    let out = '';
-    let err = '';
-    const t = setTimeout(() => { p.kill(); reject(new Error('시간 초과: ' + cmd)); }, timeoutMs);
-    p.on('error', (e) => { clearTimeout(t); reject(new Error(`${cmd} 스폰 실패: ${e.message}`)); });
-    p.stdout.on('data', (d) => { out += d; });
-    p.stderr.on('data', (d) => { err += d; });
-    p.on('exit', (code) => {
-      clearTimeout(t);
-      code === 0 ? resolve(out) : reject(new Error(`${cmd} 종료코드 ${code}: ${err.slice(-500)}`));
-    });
-  });
-}
+const run = (cmd, args, cwd, timeoutMs) => runCommand(cmd, args, { cwd, timeoutMs });
 
 /* ---------- 국기 PNG 캐시 (flagcdn.com — 무료, 키 불필요) ---------- */
 async function ensureFlags(items) {

@@ -5,6 +5,7 @@
 // 같은 텍스트+음성은 해시 캐시로 재사용한다.
 // ============================================================
 import { spawn } from 'node:child_process';
+import { spawnCommand } from './spawn.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -27,7 +28,7 @@ const hashOf = (s) => crypto.createHash('sha1').update(s).digest('hex').slice(0,
 
 function ffprobeDuration(file) {
   return new Promise((resolve) => {
-    const p = spawn('ffprobe', ['-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], { shell: process.platform === 'win32' });
+    const p = spawnCommand('ffprobe', ['-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', file]);
     let out = '';
     p.stdout.on('data', (d) => { out += d; });
     p.on('exit', () => resolve(Math.round(parseFloat(out) * 10) / 10 || 0));
@@ -103,7 +104,7 @@ export async function speak({ text, voice = '선희(여)' }) {
   const wav = mp3.replace(/\.mp3$/, '.wav');
   await sapiTts(clean, wav);
   await new Promise((resolve, reject) => {
-    const p = spawn('ffmpeg', ['-y', '-i', wav, '-codec:a', 'libmp3lame', '-b:a', '96k', mp3], { shell: process.platform === 'win32' });
+    const p = spawnCommand('ffmpeg', ['-y', '-i', wav, '-codec:a', 'libmp3lame', '-b:a', '96k', mp3]);
     p.on('error', (e) => reject(new Error('ffmpeg 스폰 실패: ' + e.message)));
     p.on('exit', (c) => (c === 0 ? resolve() : reject(new Error('ffmpeg 변환 실패'))));
   });

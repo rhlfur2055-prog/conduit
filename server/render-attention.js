@@ -4,7 +4,7 @@
 //   문장별 TTS 실측 길이가 화면 타임라인을 결정 (1:1 동기화)
 //   바운스 정답은 여기서 물리 시뮬(결정적)로 사전 계산해 props 에 주입
 // ============================================================
-import { spawn } from 'node:child_process';
+import { runCommand } from './spawn.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { atNarration, TTS_VOICE, ytMeta } from './i18n.js';
@@ -16,21 +16,7 @@ const OUT_DIR = path.join(PIPELINE_DIR, 'out');
 const ARENA = { x: 40, y: 460, w: 1000, h: 1250 };
 const BALL_R = 55;
 
-function run(cmd, args, cwd, timeoutMs = 10 * 60 * 1000) {
-  return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { cwd, shell: process.platform === 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
-    let out = '';
-    let err = '';
-    const t = setTimeout(() => { p.kill(); reject(new Error('시간 초과: ' + cmd)); }, timeoutMs);
-    p.on('error', (e) => { clearTimeout(t); reject(new Error(`${cmd} 스폰 실패: ${e.message}`)); });
-    p.stdout.on('data', (d) => { out += d; });
-    p.stderr.on('data', (d) => { err += d; });
-    p.on('exit', (code) => {
-      clearTimeout(t);
-      code === 0 ? resolve(out) : reject(new Error(`${cmd} 종료코드 ${code}: ${err.slice(-500)}`));
-    });
-  });
-}
+const run = (cmd, args, cwd, timeoutMs) => runCommand(cmd, args, { cwd, timeoutMs });
 
 /* ---------- 결정적 물리: 축별 벽 반사 횟수 (컴포지션과 동일한 접기 공식) ---------- */
 function axisBounces(p0, v, tSec, min, max) {

@@ -8,6 +8,9 @@ Claude Desktop ──stdio──▶ conduit-workflows-mcp ──HTTP──▶ Co
 
 Conduit 서버에는 이미 HTTP MCP 엔드포인트(`/mcp`)가 있습니다. 이 패키지는 그 앞에 붙는 얇은 다리로, **stdio 로만 MCP 서버를 붙일 수 있는 클라이언트**(Claude Desktop 설정 파일 등)에서 Conduit 을 쓰게 해 줍니다. 도구 정의는 Conduit 한 곳에만 있고, 이 서버는 `tools/list`·`tools/call` 을 그대로 전달합니다.
 
+> **아직 npm 에 게시하지 않았습니다.** 게시 전에는 아래의 `npx -y conduit-workflows-mcp` 자리에
+> `node <저장소 경로>/packages/conduit-workflows-mcp/bin/conduit-workflows-mcp.js` 를 씁니다 (이 폴더에서 `npm install` 먼저).
+
 ## 설치 없이 바로
 
 Conduit 서버가 `http://localhost:8787` 에 떠 있다면:

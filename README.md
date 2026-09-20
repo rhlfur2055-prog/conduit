@@ -18,17 +18,13 @@ Vite + React + [React Flow(@xyflow/react)](https://reactflow.dev) 로 만들었�
 
 ## Conduit으로 만든 것
 
-### 1. 유튜브 쇼츠 자동 제작 → 실제 채널에 게시
+### 1. 유튜브 쇼츠 자동 제작 → 실제 채널 업로드까지
 
 `트리거(수동 · 매일 09:00 스케줄)` → `주제·데이터 선택` → `대본` → `TTS 내레이션` → `영상 렌더(Remotion)` → `YouTube 업로드`
 
-Conduit 서버의 영상 모듈(`server/tts.js` · `server/render-*.js` · YouTube 업로드)로 만든 쇼츠입니다. 내레이션 생성, 화면과 낭독 싱크, 렌더, YouTube Data API(OAuth 2.0) 업로드까지 코드가 처리하고, 사람은 주제를 고르고 공개 전에 확인했습니다. 아래 영상들은 실제 채널에 공개돼 있습니다.
+Conduit 서버의 영상 모듈(`server/tts.js` · `server/render-*.js` · YouTube 업로드)로 쇼츠를 만들었습니다. 내레이션 생성, 화면과 낭독 싱크, 렌더, YouTube Data API(OAuth 2.0) 업로드까지 코드가 처리하고, 사람은 주제를 고르고 공개 전에 확인했습니다.
 
-| [![착시 테스트](https://img.youtube.com/vi/gcmHlHI0ias/mqdefault.jpg)](https://youtu.be/gcmHlHI0ias) | [![색각 테스트](https://img.youtube.com/vi/LA27Sm5cgTM/mqdefault.jpg)](https://youtu.be/LA27Sm5cgTM) | [![집중력 테스트](https://img.youtube.com/vi/1lRyPFZgUqQ/mqdefault.jpg)](https://youtu.be/1lRyPFZgUqQ) | [![청력 테스트](https://img.youtube.com/vi/fbCpICUyjKk/mqdefault.jpg)](https://youtu.be/fbCpICUyjKk) |
-|---|---|---|---|
-| 회전 실루엣 착시 · 조회수 1,421 | 숨은 숫자 색각 · 조회수 1,551 | 무주의 맹시 · 조회수 1,789 | 청력 나이 · 조회수 4,093 |
-
-*조회수는 2026-09-19 기준.*
+2026-08에 이 흐름으로 만든 영상 4편을 실제 채널에 올렸습니다(기록: 아래 개발 일지 2026-08-09 "첫 완전 자동 업로드", "4편 예약 업로드"). 이후 채널 주제를 바꾸면서 해당 영상들은 내렸고, 지금은 링크가 열리지 않습니다.
 
 ### 1-2. 그날의 핫이슈 → 헤드라인 3줄 쇼츠
 
@@ -70,11 +66,11 @@ curl -X POST http://localhost:8787/webhook/new-order \
 |---|---|
 | **무엇** | n8n / Make 방식의 노드 기반 워크플로 자동화 플랫폼 (개인 프로젝트, 2026.08 ~) |
 | **스택** | Vite · React · React Flow / Express · Node.js / Docker |
-| **규모** | 노드 50여 종 (트리거·동작·흐름 제어·배열·연동·AI·영상·수익화·출력) · 프론트+서버 약 6,000줄 |
+| **규모** | 노드 50여 종 (트리거·동작·흐름 제어·배열·연동·AI·영상·수익화·출력) · 프론트+서버 약 8,000줄 |
 | **실사용** | 쇼츠 자동 제작 파이프라인(스케줄 → 대본 → TTS → Remotion 렌더 → YouTube API 업로드)으로 만든 영상 4편이 실제 채널에 공개돼 있음 — [Conduit으로 만든 것](#conduit으로-만든-것) |
-| **테스트** | Vitest 141개 — 실행 엔진(실행 순서·분기·배치·병렬·재시도·오류 격리), 표현식, 재시도 정책, 노드 동작, API 인증·라우트 통합(실제 HTTP), 코드 실행 정책, MCP 패키지(stdio 엔드투엔드), 평가 실행기. `npm test` |
+| **테스트** | Vitest 161개 — 실행 엔진(실행 순서·분기·배치·병렬·재시도·오류 격리), 표현식, 재시도 정책, 노드 동작, API 인증·라우트 통합(실제 HTTP), 코드 실행 정책, MCP 패키지(stdio 엔드투엔드), 평가 실행기. `npm test` |
 | **평가(evals)** | AI 노드 프롬프트를 입력 20건에 돌려 통과율·회귀 목록으로 비교. `npm run eval` — [AI 노드 평가](#ai-노드-평가-evals) |
-| **MCP 패키지** | [`conduit-workflows-mcp`](packages/conduit-workflows-mcp) — Claude Desktop·Cursor 등 stdio 전용 클라이언트에서 Conduit 워크플로를 도구로 쓰는 npm 패키지 |
+| **MCP 패키지** | [`conduit-workflows-mcp`](packages/conduit-workflows-mcp) — Claude Desktop·Cursor 등 stdio 전용 클라이언트에서 Conduit 워크플로를 도구로 쓰는 패키지 (npm 게시 전 — 지금은 저장소에서 실행) |
 | **보안** | `/api`·`/mcp` API 키 인증, 키 미설정 시 로컬 전용, 외부 서버에선 코드 실행 차단(코드 노드·JS 표현식·에이전트 도구), 웹훅 HMAC 서명 검증, 크리덴셜 암호화 저장 — [API 인증](#api-인증) |
 
 **글**: [n8n을 직접 만들며 배운 설계 결정 6가지](docs/blog/2026-09-n8n-design-decisions.md) — 아이템 배열 모델, 엔진 공용화, 재시도 분류, 실패 격리, 테스트로 찾은 버그, 코드 실행 입구 셋.
@@ -224,7 +220,10 @@ claude mcp add --transport http conduit http://localhost:8787/mcp
 claude mcp add --transport http conduit http://localhost:8787/mcp --header "Authorization: Bearer <키>"
 ```
 
-**stdio 로만 MCP 서버를 붙일 수 있는 클라이언트**(Claude Desktop 설정 파일, Cursor 등)에는 npm 패키지 [`conduit-workflows-mcp`](packages/conduit-workflows-mcp) 를 씁니다. Conduit 의 `/mcp` 앞에 붙는 얇은 stdio 다리이고, 도구 정의는 Conduit 한 곳에만 있습니다.
+**stdio 로만 MCP 서버를 붙일 수 있는 클라이언트**(Claude Desktop 설정 파일, Cursor 등)에는 패키지 [`conduit-workflows-mcp`](packages/conduit-workflows-mcp) 를 씁니다. Conduit 의 `/mcp` 앞에 붙는 얇은 stdio 다리이고, 도구 정의는 Conduit 한 곳에만 있습니다.
+
+> **아직 npm 에 게시하지 않았습니다.** 게시 전에는 아래 예시의 `npx -y conduit-workflows-mcp` 자리에
+> `node <이 저장소 경로>/packages/conduit-workflows-mcp/bin/conduit-workflows-mcp.js` 를 씁니다 (먼저 그 폴더에서 `npm install`).
 
 ```json
 { "mcpServers": { "conduit": {
@@ -672,7 +671,7 @@ powershell -ExecutionPolicy Bypass -File C:\workflow\flowforge\start.ps1
 ### 2026-09-19 — 공개 전환 · 테스트 · 보안 · 구조 · 패키지
 
 1. **공개 저장소** — 비밀값(`.env`·`server/data`·`.enckey`)이 빠졌는지 두 번 확인한 뒤 GitHub 공개. README 상단에 개요·데모 GIF(주문 5건 분기)·CI 배지.
-2. **테스트 0 → 150** — 엔진(실행 순서·분기·배치·병렬·재시도·오류 격리)·표현식·재시도 정책·노드 동작 69개로 시작. 붙이면서 **버그 2건**: `stableKey`가 중첩 객체 키를 버려 중복 제거가 `{u:{id:1}}`과 `{u:{id:2}}`를 같은 아이템으로 지움(`JSON.stringify` 배열 replacer가 모든 깊이에 적용) · `"{{ a }} {{ b }}"`가 단일 표현식으로 잡혀 `undefined`. GitHub Actions CI(푸시마다 테스트+빌드).
+2. **테스트 0 → 161** — 엔진(실행 순서·분기·배치·병렬·재시도·오류 격리)·표현식·재시도 정책·노드 동작 69개로 시작. 붙이면서 **버그 2건**: `stableKey`가 중첩 객체 키를 버려 중복 제거가 `{u:{id:1}}`과 `{u:{id:2}}`를 같은 아이템으로 지움(`JSON.stringify` 배열 replacer가 모든 깊이에 적용) · `"{{ a }} {{ b }}"`가 단일 표현식으로 잡혀 `undefined`. GitHub Actions CI(푸시마다 테스트+빌드).
 3. **API 인증** (`server/auth.js`) — `/api`·`/mcp`에 Bearer/X-API-Key. 키 미설정 시 127.0.0.1만 허용(X-Forwarded-For 있으면 비로컬). `timingSafeEqual`. 화면 "설정"에서 키 입력. 401 응답이 워크플로로 들어가 캔버스가 비던 버그도 수정.
 4. **코드 실행 정책** (`server/policy.js`) — 서버에서 사용자 JS가 도는 입구 셋(코드 노드·`{{ }}` 표현식·에이전트 `run_code`)을 `CONDUIT_ALLOW_CODE` 하나로. 키 있는 서버는 기본 꺼짐. 꺼지면 표현식은 `new Function` 없는 경로 전용 해석기.
 5. **서버 분리** — 통합 테스트 11개로 동작을 고정한 뒤 500줄 `index.js` → `app`/`runtime`/`bridges` + `routes/` 5개(동작 변경 없음). `CONDUIT_DATA_DIR`로 테스트 데이터 격리.

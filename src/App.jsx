@@ -100,7 +100,8 @@ function loadInitial() {
 }
 
 function Editor() {
-  const initial = useRef(loadInitial()).current;
+  // 최초 1회만 계산 (lazy initializer) — 렌더마다 localStorage 를 다시 읽지 않는다
+  const [initial] = useState(loadInitial);
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
   const [log, setLog] = useState([]);

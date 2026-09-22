@@ -65,7 +65,8 @@ function sapiTts(text, outWav) {
     p.on('error', (e) => { fs.rmSync(txtFile, { force: true }); reject(new Error('SAPI 스폰 실패: ' + e.message)); });
     p.on('exit', (code) => {
       fs.rmSync(txtFile, { force: true });
-      code === 0 ? resolve() : reject(new Error('SAPI 실패: ' + err.slice(0, 200)));
+      if (code === 0) resolve();
+      else reject(new Error('SAPI 실패: ' + err.slice(0, 200)));
     });
   });
 }

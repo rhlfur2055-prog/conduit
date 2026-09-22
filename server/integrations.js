@@ -137,7 +137,7 @@ export async function naver({ credential, type, query, display }) {
 /* ---------- YouTube 업로드 (OAuth 리프레시 토큰) ---------- */
 import fs from 'node:fs';
 
-export async function youtubeUpload({ credential, filePath, title, description, tags, privacyStatus }) {
+export async function youtubeUpload({ credential, filePath, title, description, tags, privacyStatus, categoryId }) {
   const cred = findCred('youtubeUpload', credential);
   if (!cred?.clientId || !cred?.refreshToken) {
     return { simulated: true, note: 'YouTube 업로드 크리덴셜 없음 (.env의 YOUTUBE_CLIENT_ID/SECRET/REFRESH_TOKEN 채우면 실제 업로드)' };
@@ -166,7 +166,8 @@ export async function youtubeUpload({ credential, filePath, title, description, 
       title: String(title || '제목 없음').slice(0, 100),
       description: String(description || ''),
       tags: Array.isArray(tags) ? tags : String(tags || '').split(',').map((s) => s.trim()).filter(Boolean),
-      categoryId: '27', // 교육
+      // 27 교육 / 23 코미디 / 24 엔터테인먼트 — 밈·쇼츠는 코미디로 올린다
+      categoryId: String(categoryId || '27'),
     },
     status: { privacyStatus: privacyStatus || 'private', selfDeclaredMadeForKids: false },
   };

@@ -851,6 +851,78 @@ export const NODE_TYPES = {
       return { main: { ...(i.main || {}), video: r, ...(r?.yt ? { title: r.yt.title, description: r.yt.description, tags: r.yt.tags } : {}) } };
     },
   },
+  memeShort: {
+    title: '한 줄 댓글 밈 쇼츠 렌더', icon: 'play', color: '#16a34a', category: '영상', backend: true,
+    inputs: ['main'], outputs: ['main'],
+    defaults: {
+      episode: '{{ $json.episode }}',
+      itemsJson: '{{ $json.memes }}',
+      hook: '{{ $json.hook }}',
+      titleLine1: '사진보다 웃긴',
+      titleLine2: '댓글 한 줄',
+      personaName: '오덤덤',
+    },
+    fields: [
+      { key: 'episode', label: '몇 탄 (표현식 지원)', type: 'text' },
+      { key: 'itemsJson', label: '밈 배열 [{kind,setupLines,emphasis,image,punch,credit,attribution}] 2~8개 (표현식 지원)', type: 'textarea' },
+      { key: 'hook', label: '업로드 제목 앞부분 — 1번 밈 상황 한마디 (회차마다 달라야 한다)', type: 'text' },
+      { key: 'titleLine1', label: '화면 상단 제목 1줄 (흰색)', type: 'text' },
+      { key: 'titleLine2', label: '화면 상단 제목 2줄 (포인트색)', type: 'text' },
+      { key: 'personaName', label: '댓글 다는 캐릭터 이름', type: 'text' },
+    ],
+    summary: (p) => `한 줄 댓글 밈 ${p.episode}탄`,
+    // 사진은 미리 골라 둔 것만 받는다(image 경로) — 검색 결과에서 자동으로 고르지 않는다.
+    // 출력에 title/description/tags 를 얹어 두면 YouTube 업로드 노드 기본값이 그대로 물린다
+    run: async (i, p) => {
+      let items = p.itemsJson;
+      if (typeof items === 'string') { try { items = JSON.parse(items); } catch { items = []; } }
+      const r = await callIntegration('memeShort', {
+        episode: Number(p.episode) || 1, items, hook: p.hook || undefined,
+        titleLine1: p.titleLine1, titleLine2: p.titleLine2, persona: { name: p.personaName || '오덤덤' },
+      });
+      if (r?.ok === false) throw new Error(`밈 쇼츠 렌더 실패: ${r.error}`);
+      return { main: { ...(i.main || {}), video: r, ...(r?.yt ? { title: r.yt.title, description: r.yt.description, tags: r.yt.tags } : {}) } };
+    },
+  },
+  clipStory: {
+    title: '실영상 쇼츠 렌더 (영상 하나 = 이야기 하나)', icon: 'play', color: '#5cc8ff', category: '영상', backend: true,
+    inputs: ['main'], outputs: ['main'],
+    defaults: {
+      slug: '{{ $json.slug }}',
+      uploadTitle: '{{ $json.uploadTitle }}',
+      titleLine1: '{{ $json.titleLine1 }}',
+      titleLine2: '{{ $json.titleLine2 }}',
+      credit: '{{ $json.credit }}',
+      attributionsJson: '{{ $json.attributions }}',
+      beatsJson: '{{ $json.beats }}',
+      tags: '',
+      clipVolume: '0',
+    },
+    fields: [
+      { key: 'slug', label: '파일 이름에 쓸 영문 약칭', type: 'text' },
+      { key: 'uploadTitle', label: '업로드 제목 (제목 카드에도 뜬다)', type: 'text' },
+      { key: 'titleLine1', label: '화면 상단 1줄 (흰색)', type: 'text' },
+      { key: 'titleLine2', label: '화면 상단 2줄 (포인트색)', type: 'text' },
+      { key: 'credit', label: '화면 출처 — 작품명·연도·라이선스', type: 'text' },
+      { key: 'attributionsJson', label: '설명란 출처 배열 (표현식 지원)', type: 'textarea' },
+      { key: 'beatsJson', label: '자막 배열 [{text,style,video,startSec,fit}] (표현식 지원)', type: 'textarea' },
+      { key: 'tags', label: '태그 (쉼표구분)', type: 'text' },
+      { key: 'clipVolume', label: '원본 소리 (같은 출처의 기록일 때만 0보다 크게)', type: 'text' },
+    ],
+    summary: (p) => `실영상 쇼츠: ${p.uploadTitle || p.slug}`,
+    // 출력에 title/description/tags 를 얹어 두면 YouTube 업로드 노드 기본값이 그대로 물린다
+    run: async (i, p) => {
+      const parse = (v, fb) => { if (typeof v !== 'string') return v ?? fb; try { return JSON.parse(v); } catch { return fb; } };
+      const r = await callIntegration('clipStory', {
+        slug: p.slug, uploadTitle: p.uploadTitle, titleLine1: p.titleLine1, titleLine2: p.titleLine2,
+        credit: p.credit, attributions: parse(p.attributionsJson, []), beats: parse(p.beatsJson, []),
+        tags: String(p.tags || '').split(',').map((s) => s.trim()).filter(Boolean),
+        clipVolume: Number(p.clipVolume) || 0,
+      });
+      if (r?.ok === false) throw new Error(`실영상 쇼츠 렌더 실패: ${r.error}`);
+      return { main: { ...(i.main || {}), video: r, ...(r?.yt ? { title: r.yt.title, description: r.yt.description, tags: r.yt.tags } : {}) } };
+    },
+  },
   youtubeUpload: {
     title: 'YouTube 업로드', icon: 'globe', color: '#ff0000', category: '영상', backend: true,
     inputs: ['main'], outputs: ['main'],
@@ -860,6 +932,7 @@ export const NODE_TYPES = {
       description: '#Shorts',
       tags: '랭킹,shorts',
       privacyStatus: 'private',
+      categoryId: '27 교육',
     },
     fields: [
       { key: 'filePath', label: 'MP4 경로 (표현식 지원)', type: 'text' },
@@ -867,12 +940,17 @@ export const NODE_TYPES = {
       { key: 'description', label: '설명', type: 'textarea' },
       { key: 'tags', label: '태그 (쉼표구분)', type: 'text' },
       { key: 'privacyStatus', label: '공개 범위', type: 'select', options: ['private', 'unlisted', 'public'] },
+      { key: 'categoryId', label: '카테고리', type: 'select', options: ['27 교육', '23 코미디', '24 엔터테인먼트'] },
     ],
     summary: (p) => `업로드 (${p.privacyStatus})`,
     run: async (i, p) => {
       const r = await callIntegration('youtubeUpload', {
         filePath: p.filePath, title: p.title, description: p.description, tags: p.tags, privacyStatus: p.privacyStatus,
+        categoryId: String(p.categoryId || '27').split(' ')[0],
       });
+      // 크리덴셜이 없으면 통합 함수가 simulated 를 돌려준다. 조용히 성공한 척하면 안 올라간 걸 모르고 지나치므로 여기서 끊는다
+      if (r?.simulated) throw new Error(`YouTube 업로드를 건너뛰었습니다: ${r.note}`);
+      if (r?.ok === false) throw new Error(`YouTube 업로드 실패: ${r.error}`);
       return { main: { ...(i.main || {}), upload: r } };
     },
   },

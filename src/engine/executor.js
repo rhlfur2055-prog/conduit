@@ -42,9 +42,10 @@ const CODE_NODES = new Set(['code']);
 /**
  * @param {object} [opts]
  * @param {{ allowCode?: boolean }} [opts.policy] 서버가 넘기는 실행 정책. 브라우저(내 컴퓨터)에서는 생략 → 전부 허용.
- * @returns Map<nodeId, { status, output, input }>
+ * @param {object} [opts.meta] 실행 메타(workflowId 등) — 노드 ctx.$meta 로 전달
+ * @returns Map<nodeId, { status: 'done'|'skip'|'error'|'failedContinue'|'waiting', output, input }>
  */
-export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () => {}, seed = {}, onAgentStep = () => {}, onDeadLetter = () => {}, onItemProgress = () => {}, policy = {} } = {}) {
+export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () => {}, seed = {}, onAgentStep = () => {}, onDeadLetter = () => {}, onItemProgress = () => {}, policy = {}, meta = {} } = {}) {
   const allowCode = policy.allowCode !== false;
   const results = new Map();
   onLog({ kind: 'info', msg: '워크플로 실행 시작…' });
@@ -58,6 +59,7 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
   }
 
   const started = nowISO();
+  const blocked = new Set();   // 사람 승인 대기 중인 노드와 그 아래 노드들
 
   for (const node of order) {
     const def = NODE_TYPES[node.data.kind];
@@ -71,6 +73,15 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
       results.set(node.id, { status: 'done', output, input: undefined });
       onStatus(node.id, 'done', { output, input: undefined });
       onLog({ kind: 'ok', msg: `● ${def.title} — ${countItems(output.main)}건 주입` });
+      continue;
+    }
+
+    // 승인 대기 노드 아래는 전부 건너뛴다 — 입력이 여럿인 노드(Merge 등)가 반쪽 입력으로 돌면 안 된다
+    if (edges.some((e) => e.target === node.id && blocked.has(e.source))) {
+      blocked.add(node.id);
+      results.set(node.id, { status: 'skip', output: {}, input: undefined });
+      onStatus(node.id, 'skip');
+      onLog({ kind: 'skip', msg: `⤵ ${def.title} — 건너뜀 (승인 대기 중)` });
       continue;
     }
 
@@ -152,6 +163,7 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
         // ---- 배치 모드: 배열 전체를 한 번에 받는 노드 (Aggregate/Merge/Sort…) ----
         const ctx = {
           $json: primaryItems[0] ?? {}, $items: primaryItems, $index: 0, $now: started,
+          $results: results, $flow: { nodes, edges }, $meta: meta, $nodeId: node.id,
           safeExpressions: !allowCode,
           onAgentStep: (step) => onAgentStep(node.id, step),
         };
@@ -181,6 +193,7 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
 
             const ctx = {
               $json: item ?? {}, $items: primaryItems, $index: index, $now: started,
+              $results: results, $flow: { nodes, edges }, $meta: meta, $nodeId: node.id,
               safeExpressions: !allowCode,
               onAgentStep: (step) => onAgentStep(node.id, step),
             };
@@ -244,6 +257,17 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
         addOut('main', { _error: { node: def.title, message: err.message } });
         failedItems++;
       }
+    }
+
+    // 사람 승인 대기: 노드가 { __wait: {...} } 를 내면 여기서 멈춘다. 출력을 비워 두므로 아래 노드는
+    // "입력 없음"으로 건너뛰고, 이 노드와 무관한 가지는 계속 흐른다. 재개는 seed 로 이 노드의 출력을 주입해 다시 실행한다.
+    if (!nodeError && outputs.__wait?.length) {
+      const waits = outputs.__wait;
+      blocked.add(node.id);
+      results.set(node.id, { status: 'waiting', output: {}, input: primaryItems, attempts: totalAttempts, wait: waits });
+      onStatus(node.id, 'waiting', { input: primaryItems, wait: waits });
+      onLog({ kind: 'skip', msg: `⏸ ${def.title} — 사람 승인 대기 (${waits.map((w) => w.approvalId || '?').join(', ')})` });
+      continue;
     }
 
     if (nodeError) {

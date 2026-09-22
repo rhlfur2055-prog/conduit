@@ -15,10 +15,15 @@ import { webhooks } from './routes/webhooks.js';
 import { mcpTools, mcpServer } from './routes/mcp.js';
 import { dlq } from './routes/dlq.js';
 import { channelApi, dashboardPage } from './routes/channel.js';
+import { approvals } from './routes/approvals.js';
 
 export function createApp() {
   const app = express();
-  app.use(cors());
+  // 브라우저 교차 출처는 로컬 프론트(localhost·127.0.0.1)만 허용 — 아무 웹페이지의 스크립트가 로컬 서버를 부르지 못하게
+  // (같은 서버가 dist 를 서빙하면 동일 출처라 CORS 가 필요 없다. 다른 호스트의 프론트는 CONDUIT_CORS_ORIGINS 에 쉼표로)
+  const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+  const extraOrigins = () => String(process.env.CONDUIT_CORS_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+  app.use(cors({ origin: (origin, cb) => cb(null, !origin || LOCAL_ORIGIN.test(origin) || extraOrigins().includes(origin)) }));
   // 서명 검증을 위해 raw body 를 보존한다
   app.use(express.json({
     limit: '4mb',
@@ -38,6 +43,7 @@ export function createApp() {
   /* ---------- 보호 라우트 ---------- */
   app.use('/api', workflows);      // /api/workflows, /api/run, /api/executions, /api/credentials
   app.use('/api', dlq);            // /api/dlq, /api/idempotency
+  app.use('/api', approvals);      // /api/approvals — 사람 승인 대기 목록·결정
   app.use('/api/mcp', mcpTools);   // /api/mcp/tools
   app.use('/api/channel', channelApi);
   app.use('/mcp', mcpServer);

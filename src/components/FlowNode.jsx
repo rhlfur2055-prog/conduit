@@ -69,6 +69,7 @@ function FlowNode({ id, data, selected }) {
         {data.status === 'error' && <span className="nd-badge err">!</span>}
         {data.status === 'failedContinue' && <span className="nd-badge warn" title="실패했지만 계속 진행">!</span>}
         {data.status === 'retrying' && <span className="nd-badge warn" title="재시도 중">↻</span>}
+        {data.status === 'waiting' && <span className="nd-badge warn" title="사람 승인 대기 중">⏸</span>}
         {data.status === 'running' && <span className="nd-badge run" />}
       </div>
 

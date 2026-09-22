@@ -14,6 +14,7 @@ import { createApp } from './app.js';
 import { authMode } from './auth.js';
 import { codeExecutionAllowed } from './policy.js';
 import { registerAll } from './runtime.js';
+import { startTelegramApprovals, startApprovalTimer, recoverAtBoot } from './approvals.js';
 
 // 직접 실행(node server/index.js)인지, 테스트 등에서 import 했는지
 const isMain = !!process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -30,12 +31,20 @@ export const app = createApp();
 
 if (isMain) {
   const PORT = process.env.PORT || 8787;
-  app.listen(PORT, '0.0.0.0', () => {
+  app.listen(PORT, '0.0.0.0', async () => {
     console.log(`\n  Conduit 실행 중 → http://localhost:${PORT}`);
     console.log(authMode() === 'api-key'
       ? '  인증: API 키 필요 (CONDUIT_API_KEY)'
       : '  인증: 키 미설정 — 이 컴퓨터(127.0.0.1)에서 온 요청만 허용. 외부에 열려면 CONDUIT_API_KEY 를 설정하세요.');
     console.log(`  코드 실행: ${codeExecutionAllowed() ? '켜짐' : '꺼짐 (CONDUIT_ALLOW_CODE)'}`);
     registerAll();
+    await recoverAtBoot().catch((e) => console.warn('[approval] 기동 정리 실패:', e.message));
+    // 사람 승인 게이트 — 텔레그램 롱폴링(공개 URL 불필요) + 리마인드/만료 점검
+    if (startTelegramApprovals()) {
+      startApprovalTimer();
+      console.log('  텔레그램 승인: 롱폴링 시작 (TELEGRAM_BOT_TOKEN 설정됨)');
+    } else {
+      console.log('  텔레그램 승인: 꺼짐 (TELEGRAM_BOT_TOKEN 없음)');
+    }
   });
 }

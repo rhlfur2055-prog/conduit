@@ -12,6 +12,8 @@
 import crypto from 'node:crypto';
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+// 로컬 전용 모드에서 허용하는 Host 헤더 — 공격자 도메인이 127.0.0.1 로 풀리는 DNS 리바인딩은 Host 가 달라서 걸린다
+const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
 
 /**
  * 이 컴퓨터에서 직접 온 요청인가.
@@ -52,7 +54,8 @@ export function requireApiKey({ getKey = () => process.env.CONDUIT_API_KEY } = {
     const expected = getKey();
 
     if (!expected) {
-      if (isLoopback(req)) return next();
+      const host = String(req.headers?.host || '');
+      if (isLoopback(req) && (!host || LOCAL_HOST.test(host))) return next();
       return res.status(403).json({
         error: 'CONDUIT_API_KEY 가 설정되지 않아 이 컴퓨터(127.0.0.1)에서 온 요청만 허용됩니다.',
       });

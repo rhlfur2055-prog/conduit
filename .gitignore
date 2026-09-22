@@ -35,3 +35,6 @@ evals/reports/
 *.sln
 *.sw?
 
+
+# 텔레그램 토큰 입력 도우미 (로컬 전용)
+telegram-token.cmd

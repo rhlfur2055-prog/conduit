@@ -17,12 +17,23 @@ const file = (name) => path.join(DATA_DIR, name);
 function readJSON(name, fallback) {
   try {
     return JSON.parse(fs.readFileSync(file(name), 'utf8'));
-  } catch {
+  } catch (e) {
+    if (e.code === 'ENOENT') return fallback;
+    // 파일은 있는데 못 읽는다 = 손상. 조용히 빈 값으로 덮어쓰지 말고 백업해 두고 크게 알린다.
+    try {
+      const backup = file(`${name}.corrupt-${Date.now()}`);
+      fs.renameSync(file(name), backup);
+      console.error(`[store] ${name} 이 손상돼 ${path.basename(backup)} 으로 옮겼습니다: ${e.message}`);
+    } catch { /* 백업 실패는 무시 */ }
     return fallback;
   }
 }
+// 임시 파일에 쓰고 이름을 바꾼다 — 쓰는 도중 꺼져도 반쪽 파일이 남지 않는다
 function writeJSON(name, data) {
-  fs.writeFileSync(file(name), JSON.stringify(data, null, 2));
+  const target = file(name);
+  const tmp = `${target}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+  fs.renameSync(tmp, target);
 }
 
 // 코드 노드 등에서 server/data 아래 JSON 을 읽을 때 사용.
@@ -201,6 +212,35 @@ export const DLQ = {
     return rec;
   },
   remove(id) { writeJSON('dlq.json', DLQ.all().filter((r) => r.id !== id)); },
+};
+
+/* ---------- 사람 승인 대기 ----------
+   워크플로가 승인 노드에서 멈출 때의 스냅샷(그때까지의 노드 출력 + 노드/엣지)과 결정을 보관한다.
+   서버가 재시작돼도 파일에 남으므로, 버튼을 늦게 눌러도 이어서 실행할 수 있다. */
+const APPROVALS_MAX = Number(process.env.APPROVALS_MAX) || 500;
+
+export const Approvals = {
+  all: () => readJSON('approvals.json', []),
+  get: (id) => Approvals.all().find((a) => a.id === id) || null,
+  pending: () => Approvals.all().filter((a) => a.status === 'pending'),
+  add(rec) {
+    const full = { id: uid('ap'), status: 'pending', createdAt: new Date().toISOString(), reminded: false, ...rec };
+    // 상한을 넘으면 끝난 것부터 버린다 — 대기 중인 건은 밀려나지 않는다
+    const all = [full, ...Approvals.all()];
+    const isOpen = (a) => a.status === 'pending' || a.status === 'preparing';
+    const open = all.filter(isOpen);
+    const closed = all.filter((a) => !isOpen(a)).slice(0, Math.max(0, APPROVALS_MAX - open.length));
+    writeJSON('approvals.json', all.filter((a) => isOpen(a) || closed.includes(a)));
+    return full;
+  },
+  update(id, patch) {
+    const list = Approvals.all();
+    const rec = list.find((a) => a.id === id);
+    if (!rec) return null;
+    Object.assign(rec, patch);
+    writeJSON('approvals.json', list);
+    return rec;
+  },
 };
 
 /* ---------- 크리덴셜 (data 는 암호화 저장) ---------- */

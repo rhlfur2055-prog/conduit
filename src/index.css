@@ -183,6 +183,7 @@ button { font-family: inherit; }
 .nd-box.retrying { border-color: #d8a657; }
 .nd-box.done { border-color: #c4d1b5; }
 .nd-box.failedContinue { border-color: #d8a657; }
+.nd-box.waiting { border-color: #b5651d; }
 .nd-box.error { border-color: #e3b6a9; }
 .nd-icon { color: var(--c); display: flex; }
 

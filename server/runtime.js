@@ -5,6 +5,7 @@
 import cron from 'node-cron';
 import { runFlow } from '../src/engine/executor.js';
 import { Workflows, Executions, DLQ } from './store.js';
+import { finalizeApproval } from './approvals.js';
 import { currentPolicy } from './policy.js';
 
 /** 실패한 노드 목록과 Error Trigger 에 넘길 페이로드 */
@@ -64,6 +65,7 @@ export async function execute(workflow, { seed = {}, trigger = 'manual' } = {}) 
   const results = await runFlow(nodes, edges, {
     seed,
     policy: currentPolicy(),
+    meta: { workflowId: workflow.id || null, workflowName: workflow.name || '(임시)', trigger },
     onLog: (l) => logs.push(l),
     onStatus: (id, status, payload) => { statuses[id] = { status, ...(payload || {}) }; },
     onDeadLetter: (e) => DLQ.add({ ...e, workflowId: workflow.id, workflowName: workflow.name }),
@@ -71,13 +73,37 @@ export async function execute(workflow, { seed = {}, trigger = 'manual' } = {}) 
 
   const outputs = {};
   for (const [id, r] of results) outputs[id] = r.output;
+
+  // 사람 승인 대기: 승인 노드는 실행 도중 기록만 만든다('preparing'). 실행이 끝난 지금 "끝난 노드 전부"를
+  // 스냅샷으로 넘겨 확정(메시지 전송 → 'pending')한다. 다른 승인 노드·실패한 노드는 빈 출력으로 넣어
+  // 재개할 때 다시 실행되지 않게 한다. 실행에 오류가 있어도 확정한다 — 안 하면 부분 스냅샷으로 재개돼 노드가 두 번 돈다.
+  for (const [id, r] of results) {
+    if (r.status !== 'waiting') continue;
+    const snapshot = {};
+    for (const [oid, o] of results) {
+      if (oid === id) continue;
+      if (o.status === 'done' || o.status === 'failedContinue') snapshot[oid] = o.output || {};
+      else if (o.status === 'waiting' || o.status === 'error') snapshot[oid] = {};
+    }
+    for (const w of r.wait || []) {
+      if (!w?.approvalId) continue;
+      try {
+        await finalizeApproval(w.approvalId, snapshot);
+        logs.push({ kind: 'ok', msg: `⏸ 승인 요청 전송 (${w.approvalId})` });
+      } catch (e) {
+        statuses[id] = { ...(statuses[id] || {}), status: 'error', error: `승인 요청 전송 실패: ${e.message}` };
+        logs.push({ kind: 'err', msg: `✖ 승인 요청 전송 실패 (${w.approvalId}): ${e.message}` });
+      }
+    }
+  }
   const hadError = Object.values(statuses).some((s) => s.status === 'error');
+  const waiting = !hadError && Object.values(statuses).some((s) => s.status === 'waiting');
 
   const exec = Executions.add({
     workflowId: workflow.id || null,
     workflowName: workflow.name || '(임시)',
     trigger,
-    status: hadError ? 'error' : 'success',
+    status: hadError ? 'error' : waiting ? 'waiting' : 'success',
     logs,
     statuses,
   });

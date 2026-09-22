@@ -409,6 +409,43 @@ export const NODE_TYPES = {
     run: async (_i, p) => { throw new Error(p.message || '중단'); },
   },
 
+  approvalRequest: {
+    title: '사람 승인 대기', icon: 'check', color: '#b5651d', category: '흐름 제어', backend: true,
+    inputs: ['main'], outputs: ['approved', 'rejected', 'expired'],
+    defaults: {
+      channel: 'telegram',
+      chatId: '',
+      title: '승인 요청: {{ $json.name }}',
+      text: '{{ $json.draft }}',
+      remindAfterMin: 60,
+      expireAfterMin: 1440,
+    },
+    fields: [
+      { key: 'channel', label: '승인 채널', type: 'select', options: ['telegram'] },
+      { key: 'chatId', label: '채팅 ID (비우면 TELEGRAM_CHAT_ID)', type: 'text' },
+      { key: 'title', label: '제목 (표현식 지원)', type: 'text' },
+      { key: 'text', label: '승인받을 내용 (표현식 지원)', type: 'textarea' },
+      { key: 'remindAfterMin', label: '리마인드까지 (분)', type: 'text' },
+      { key: 'expireAfterMin', label: '만료까지 (분) — 지나면 expired 포트로 흐름', type: 'text' },
+    ],
+    summary: (p) => `${p.channel} 승인 · 만료 ${p.expireAfterMin}분`,
+    // 서버: 스냅샷을 저장하고 메시지를 보낸 뒤 { __wait } 로 멈춘다. 결정이 오면 서버가 seed 로 재개한다.
+    // 브라우저(브리지 없음): 대기 상태로만 표시하고 통과시키지 않는다.
+    run: async (i, p, ctx) => {
+      const item = i.main || {};
+      const r = await callIntegration('approval', {
+        channel: p.channel, chatId: p.chatId, title: p.title, text: p.text,
+        remindAfterMin: p.remindAfterMin, expireAfterMin: p.expireAfterMin, item,
+        _ctx: { results: ctx?.$results, flow: ctx?.$flow, meta: ctx?.$meta, nodeId: ctx?.$nodeId },
+      });
+      if (r?.waiting) return { __wait: { approvalId: r.approvalId, channel: r.channel } };
+      // 브라우저(브리지 없음): 승인 없이 아래로 흘리지 않는다 — 캔버스 '실행'에서도 HTTP·코드 노드는 진짜로 돌기 때문
+      if (r?.simulated) return { __wait: { approvalId: null, simulated: true, note: r.note } };
+      if (r?.error) throw new Error(r.error);
+      throw new Error('승인 요청 결과를 해석할 수 없습니다');
+    },
+  },
+
   /* ---------------- 연동 (실제 API · 서버 실행 + 크리덴셜 필요) ---------------- */
   slack: {
     title: 'Slack 메시지', icon: 'output', color: '#611f69', category: '연동', backend: true,
@@ -423,6 +460,21 @@ export const NODE_TYPES = {
     run: async (i, p) => {
       const r = await callIntegration('slack', { credential: p.credential, channel: p.channel, text: p.text });
       return { main: { ...(i.main || {}), slack: r } };
+    },
+  },
+  telegram: {
+    title: '텔레그램 메시지', icon: 'output', color: '#2aabee', category: '연동', backend: true,
+    inputs: ['main'], outputs: ['main'],
+    defaults: { chatId: '', text: '{{ $json.name }} 이벤트 발생' },
+    fields: [
+      { key: 'chatId', label: '채팅 ID (비우면 TELEGRAM_CHAT_ID)', type: 'text' },
+      { key: 'text', label: '메시지 (표현식 지원)', type: 'textarea' },
+    ],
+    summary: (p) => `텔레그램 ${p.chatId || '(기본 채팅)'}`,
+    run: async (i, p) => {
+      const r = await callIntegration('telegram', { chatId: p.chatId, text: p.text });
+      if (r?.ok === false) throw new Error(`텔레그램 전송 실패: ${r.error}`);
+      return { main: { ...(i.main || {}), telegram: r } };
     },
   },
   gmail: {

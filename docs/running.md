@@ -1,0 +1,36 @@
+# 실행 방법
+
+Docker · 개발 모드 · 환경변수.
+
+## Docker로 실행 (권장 · 단일 컨테이너)
+
+```bash
+cp .env.example .env      # CONDUIT_API_KEY 를 채울 것 — 컨테이너 밖에서 오는 요청은 로컬이 아니다
+docker compose up -d --build
+```
+
+→ http://localhost:8787 (프론트엔드 + API + 웹훅이 한 포트로 동작). 처음 열면 사이드바 **설정**에 `.env` 의 키를 입력하세요.
+
+- 데이터(워크플로·크리덴셜·실행기록·DLQ)는 named volume `conduit-data` 에 영속화됩니다.
+- ⚠️ 이 볼륨에 크리덴셜 **암호화 키(`.enckey`)**가 들어 있으니 삭제하지 마세요. 삭제 시 저장된 크리덴셜 복호화가 불가능해집니다.
+- `HEALTHCHECK` 로 `/api/health` 를 감시하고, 로그는 10MB×3 로테이션됩니다.
+- 컨테이너는 non-root(`node`) 유저로 실행됩니다.
+
+## 실행 방법 (개발 모드)
+
+이 PC는 Node.js가 **fnm**으로 설치되어 있습니다. 아래 스크립트가 환경을 잡고
+**백엔드(8787) + 프론트엔드(5173)를 함께** 띄웁니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start.ps1
+```
+
+또는 수동으로:
+
+```powershell
+fnm env --shell power-shell | Out-String | Invoke-Expression
+npm install     # 최초 1회
+npm run dev     # http://localhost:5173
+```
+
+프로덕션 빌드: `npm run build` → `dist/`

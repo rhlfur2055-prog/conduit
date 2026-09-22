@@ -35,5 +35,3 @@ evals/reports/
 *.sln
 *.sw?
 
-# 개인 콘텐츠 대본·소재 (제품 코드 아님)
-content/

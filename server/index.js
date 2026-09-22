@@ -15,6 +15,7 @@ import { authMode } from './auth.js';
 import { codeExecutionAllowed } from './policy.js';
 import { registerAll } from './runtime.js';
 import { startTelegramApprovals, startApprovalTimer, recoverAtBoot } from './approvals.js';
+import { closeOcr } from './vision.js';
 
 // 직접 실행(node server/index.js)인지, 테스트 등에서 import 했는지
 const isMain = !!process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -47,4 +48,12 @@ if (isMain) {
       console.log('  텔레그램 승인: 꺼짐 (TELEGRAM_BOT_TOKEN 없음)');
     }
   });
+
+  // OCR 워커(tesseract.js)는 한 번 뜨면 프로세스를 붙잡고 있으므로 종료 시 정리한다
+  for (const sig of ['SIGINT', 'SIGTERM']) {
+    process.on(sig, async () => {
+      await closeOcr();
+      process.exit(0);
+    });
+  }
 }

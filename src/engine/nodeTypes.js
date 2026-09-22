@@ -400,6 +400,61 @@ export const NODE_TYPES = {
       return { main: out };
     },
   },
+  ocr: {
+    title: 'OCR (이미지 → 텍스트)', icon: 'globe', color: '#1a7f5a', category: 'AI', backend: true,
+    inputs: ['main'], outputs: ['main'],
+    defaults: { image: '{{ $json.image }}', lang: 'kor+eng', minConfidence: '60' },
+    fields: [
+      { key: 'image', label: '이미지 — 파일 경로 · data:URL · base64', type: 'text' },
+      { key: 'lang', label: '언어', type: 'select', options: ['kor+eng', 'kor', 'eng', 'jpn', 'chi_sim'] },
+      { key: 'minConfidence', label: '최소 신뢰도 (0~100) — 낮은 단어는 버린다', type: 'text' },
+    ],
+    summary: (p) => `OCR ${p.lang}`,
+    // tesseract.js — 오프라인, API 키 불필요
+    run: async (i, p) => {
+      const r = await callIntegration('ocr', { image: p.image, lang: p.lang, minConfidence: p.minConfidence });
+      return { main: { ...(i.main || {}), ocr: r } };
+    },
+  },
+  plateRecognize: {
+    title: '번호판 인식 (YOLO11+PaddleOCR)', icon: 'globe', color: '#1a7f5a', category: 'AI', backend: true,
+    inputs: ['main'], outputs: ['main'],
+    defaults: { image: '{{ $json.image }}', baseUrl: '', minConfidence: '0.5', timeoutMs: '30000' },
+    fields: [
+      { key: 'image', label: '이미지 — 파일 경로 · data:URL · base64', type: 'text' },
+      { key: 'baseUrl', label: '번호판 서버 주소 (비우면 http://localhost:5000)', type: 'text' },
+      { key: 'minConfidence', label: '최소 신뢰도 (0~1)', type: 'text' },
+      { key: 'timeoutMs', label: '타임아웃 (ms)', type: 'text' },
+    ],
+    summary: (p) => `번호판 인식 (신뢰도 ≥ ${p.minConfidence || 0})`,
+    // 외부 yolo11 FastAPI 서버 호출. 서버가 없으면 시뮬레이션으로 떨어진다.
+    run: async (i, p) => {
+      const r = await callIntegration('plateRecognize', {
+        image: p.image, baseUrl: p.baseUrl,
+        minConfidence: p.minConfidence, timeoutMs: p.timeoutMs,
+      });
+      return { main: { ...(i.main || {}), plates: r } };
+    },
+  },
+  screenUnderstand: {
+    title: '화면 이해 (무슨 기능인지)', icon: 'sparkles', color: '#7c5cbf', category: 'AI', backend: true,
+    inputs: ['main'], outputs: ['main'],
+    defaults: { image: '{{ $json.image }}', lang: 'kor+eng', hint: '', withOcr: 'true' },
+    fields: [
+      { key: 'image', label: '이미지 — 파일 경로 · data:URL · base64', type: 'text' },
+      { key: 'hint', label: '참고 설명 (선택) — 무엇을 찾는지', type: 'textarea' },
+      { key: 'lang', label: 'OCR 언어', type: 'select', options: ['kor+eng', 'kor', 'eng', 'jpn', 'chi_sim'] },
+      { key: 'withOcr', label: 'OCR 텍스트를 함께 전달 (작은 글씨 인식률↑)', type: 'select', options: ['true', 'false'] },
+    ],
+    summary: () => '화면을 보고 기능·동작을 구조화',
+    // OCR 텍스트 + 이미지를 Claude vision 에 함께 넘겨 JSON 으로 받는다
+    run: async (i, p) => {
+      const r = await callIntegration('screenUnderstand', {
+        image: p.image, lang: p.lang, hint: p.hint, withOcr: p.withOcr !== 'false',
+      });
+      return { main: { ...(i.main || {}), screen: r } };
+    },
+  },
   stopError: {
     title: '중단 & 오류', icon: 'close', color: '#c0563f', category: '흐름 제어',
     inputs: ['main'], outputs: [],

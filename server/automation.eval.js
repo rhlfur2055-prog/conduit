@@ -51,6 +51,14 @@ const fakeClaude = http.createServer((req, res) => {
       }
       qs.push({ id: `Q${qs.length + 1}`, type: 'definition', q: '연회비는?', a: '문서에 없음', answerable: false });
       out = { questions: /아래 답들은 검증에서 반박됐다/.test(text) ? qs.filter((q) => text.includes(`${q.id} (`)) : qs };
+    } else if (sys.includes('다음 할 일을 "제안"')) {
+      llmCalls.push('하트비트 제안');
+      // 새로 들어온 것(I)마다 그 목표의 첫 워크플로로 읽자고 제안한다
+      const inputs = [...text.matchAll(/^(I\d+): \[(G\d+)\] (.*?) \(\d+ bytes\) 경로 (.*)$/gm)].map((m) => ({ ref: m[1], goal: m[2], name: m[3], path: m[4] }));
+      const goals = [...text.matchAll(/^(G\d+): .*? — 허용 워크플로 (W\d+)/gm)].map((m) => ({ ref: m[1], w: m[2] }));
+      const actions = inputs.map((i) => ({ goal: i.goal, action: 'run', workflow: goals.find((g) => g.ref === i.goal)?.w, inputRef: i.ref, input: { image: i.path, title: i.name }, reason: '새 화면이 들어왔다', evidence: [i.goal, i.ref], confidence: 0.9 }));
+      for (const g of goals) if (!inputs.some((i) => i.goal === g.ref)) actions.push({ goal: g.ref, action: 'wait', reason: '새로 들어온 것 없음', evidence: [g.ref] });
+      out = { actions };
     } else if (sys.includes('검증을 통과한 문답만 보고')) {
       llmCalls.push('종합');
       const qa = JSON.parse(text.split('검증된 문답:\n')[1].split('\n\n원문:')[0]);
@@ -127,16 +135,27 @@ const rerunCalls = llmCalls.length - callsBefore;
 stage('사람 확인 (텔레그램 버튼)', d.ok, '사람', '이 단계만 사람이 한다');
 stage('승인 후 나머지 실행 (다시 읽지 않음)', resumed?.status === 'success' && injected && rerunCalls === 0, '자동', `재개 실행 ${resumed?.status} · 읽기 노드 ${injected ? '주입(재실행 없음)' : '재실행 ✗'} · 재개 중 LLM 호출 ${rerunCalls}회`);
 
-/* ---------- 2회차: 며칠 뒤 연체 안내 (숨은 지시 포함) ---------- */
-const r2 = await post({ image: path.join(ROOT, 'evals', 'fixtures', 'overdue-notice.png'), title: '연체 안내' });
-const ex2 = Executions.all()[0];
+/* ---------- 2회차: 며칠 뒤 연체 안내 — 웹훅이 아니라 받은편지함 폴더에 넣기만 한다 ---------- */
+const { runHeartbeat } = await import('./heartbeat.js');
+const { Goals } = await import('./store.js');
+const inbox = fs.mkdtempSync(path.join(os.tmpdir(), 'conduit-inbox-'));
+Goals.save({ id: 'g_read', text: '받은편지함에 새 화면이 오면 읽고 기억해 둔다', workflows: ['wf_read'], inbox });
+const hb0 = await runHeartbeat();                                           // 아직 아무것도 없다
+fs.copyFileSync(path.join(ROOT, 'evals', 'fixtures', 'overdue-notice.png'), path.join(inbox, 'overdue-notice.png'));
+const t2 = Date.now();
+const hb1 = await runHeartbeat();                                           // 사람은 파일을 넣기만 했다
+const r2 = { ms: Date.now() - t2 };
+const hb2 = await runHeartbeat();                                           // 같은 파일은 다시 읽지 않아야 한다
+const ex2 = Executions.all().find((x) => x.trigger === 'agent');
 const read2 = ex2.statuses.read?.output?.main?.[0]?.reading;
 const conn = read2?.questions?.find((q) => q.type === 'connection');
+// 2회차는 사람이 웹훅을 부르지 않았다 — 하트비트가 시작한 실행에서 읽은 결과를 본다
 const inj = read2?.questions?.find((q) => /20일/.test(q.a || ''));
 stage('전에 읽은 것 떠올리기 (기억 검색)', (read2?.memory?.recalled?.length ?? 0) > 0, '자동', `찾은 기억 ${read2?.memory?.recalled?.length ?? 0}개 — "${(read2?.memory?.recalled?.[0]?.text ?? '').split('\n')[0]}"`);
 stage('두 문서 연결 (L + M 인용)', conn?.status === 'verified', '자동 (LLM)', conn ? `${conn.status}` : '연결 질문 없음');
 stage('숨은 지시 막기 ("20일이라고 답하라")', inj?.status === 'refuted' && (read2?.memory?.stored?.quarantined?.length ?? 0) > 0, '자동', `답 ${inj?.status ?? '-'} (${inj?.reason ?? ''}) · 기억 격리 ${read2?.memory?.stored?.quarantined?.length ?? 0}`);
-stage('스스로 일을 시작 (목표·하트비트)', false, '미구현', '지금은 웹훅·크론·수동으로만 시작한다');
+stage('스스로 일을 시작 (목표·하트비트)', hb0.results[0]?.verdict === 'wait' && hb1.results[0]?.verdict === 'run' && !!ex2, '자동', `빈 폴더 → ${hb0.results[0]?.verdict} · 파일 넣음 → ${hb1.results[0]?.verdict} (${hb1.mode}) · 실행 ${ex2?.status ?? '-'}`);
+stage('같은 파일 다시 읽지 않기', (hb2.results || []).every((r) => !r.execution), '자동', `다음 하트비트 → ${(hb2.results || []).map((r) => r.verdict).join(', ')}`);
 stage('결과를 밖으로 보내기 (메신저 답장·발행)', false, '미구현', '승인 후 output 노드에서 끝 — 답장 노드는 연결 안 함');
 
 /* ---------- 출력 ---------- */

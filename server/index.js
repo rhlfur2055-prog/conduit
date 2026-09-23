@@ -16,6 +16,7 @@ import { codeExecutionAllowed } from './policy.js';
 import { registerAll } from './runtime.js';
 import { startTelegramApprovals, startApprovalTimer, recoverAtBoot } from './approvals.js';
 import { closeOcr } from './vision.js';
+import { startHeartbeat } from './heartbeat.js';
 
 // 직접 실행(node server/index.js)인지, 테스트 등에서 import 했는지
 const isMain = !!process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -47,6 +48,8 @@ if (isMain) {
     } else {
       console.log('  텔레그램 승인: 꺼짐 (TELEGRAM_BOT_TOKEN 없음)');
     }
+    // 하트비트 — 목표를 보고 스스로 일을 시작한다 (specs/004)
+    console.log(startHeartbeat() ? `  하트비트: ${process.env.CONDUIT_HEARTBEAT}` : '  하트비트: 꺼짐 (CONDUIT_HEARTBEAT 없음 — POST /api/heartbeat 로 한 번씩 돌릴 수 있다)');
   });
 
   // OCR 워커(tesseract.js)는 한 번 뜨면 프로세스를 붙잡고 있으므로 종료 시 정리한다

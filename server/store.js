@@ -243,6 +243,69 @@ export const Approvals = {
   },
 };
 
+/* ---------- 목표 · 하트비트 (specs/004-goals-heartbeat) ----------
+   목표는 사람이 정한다. 하트비트 기록은 다음 하트비트의 "최근 결정" 으로 들어간다. */
+const HEARTBEATS_MAX = 200;
+
+export const Goals = {
+  all: () => readJSON('goals.json', []),
+  get: (id) => Goals.all().find((g) => g.id === id) || null,
+  save(g) {
+    const list = Goals.all();
+    const id = g.id || uid('g');
+    const prev = list.find((x) => x.id === id);
+    const rec = {
+      id,
+      text: String(g.text ?? prev?.text ?? '').slice(0, 500),
+      workflows: Array.isArray(g.workflows) ? g.workflows.map(String) : (prev?.workflows ?? []),
+      inbox: g.inbox ?? prev?.inbox ?? null,
+      cadenceMin: Number(g.cadenceMin ?? prev?.cadenceMin ?? 0) || 0,
+      requireApproval: !!(g.requireApproval ?? prev?.requireApproval ?? false),
+      active: g.active ?? prev?.active ?? true,
+      createdAt: prev?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    writeJSON('goals.json', prev ? list.map((x) => (x.id === id ? rec : x)) : [...list, rec]);
+    return rec;
+  },
+  remove(id) { writeJSON('goals.json', Goals.all().filter((g) => g.id !== id)); },
+};
+
+export const Heartbeats = {
+  all: () => readJSON('heartbeats.json', []),
+  add(rec) {
+    const full = { id: uid('hb'), at: new Date().toISOString(), ...rec };
+    writeJSON('heartbeats.json', [full, ...Heartbeats.all()].slice(0, HEARTBEATS_MAX));
+    return full;
+  },
+};
+
+/** 받은편지함에서 이미 다룬 파일 (경로·크기·수정시각으로 구분 — 같은 이름으로 새 파일이 오면 다시 본다) */
+export const InboxSeen = {
+  all: () => readJSON('inbox-seen.json', {}),
+  has: (key) => key in InboxSeen.all(),
+  mark(key, info) { const m = InboxSeen.all(); m[key] = { at: new Date().toISOString(), ...info }; writeJSON('inbox-seen.json', m); },
+};
+
+/** 사람 승인을 기다리는 하트비트 제안 */
+export const PendingActions = {
+  all: () => readJSON('pending-actions.json', []),
+  get: (id) => PendingActions.all().find((p) => p.id === id) || null,
+  add(rec) {
+    const full = { id: uid('pa'), status: 'pending', createdAt: new Date().toISOString(), ...rec };
+    writeJSON('pending-actions.json', [full, ...PendingActions.all()].slice(0, 200));
+    return full;
+  },
+  update(id, patch) {
+    const list = PendingActions.all();
+    const rec = list.find((p) => p.id === id);
+    if (!rec) return null;
+    Object.assign(rec, patch);
+    writeJSON('pending-actions.json', list);
+    return rec;
+  },
+};
+
 /* ---------- 장기 기억 (검증된 읽기 기억 · specs/001-verified-memory) ----------
    원문 조각(source)과 검증된 사실(fact)만 들어온다. key(정규화 텍스트)가 같으면 다시 넣지 않는다. */
 export const Memory = {

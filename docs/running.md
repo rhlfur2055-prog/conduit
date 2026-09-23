@@ -52,3 +52,19 @@ python server/ocr/paddle_ocr_server.py --port 8866
 ```
 
 다른 주소면 `.env` 에 `CONDUIT_PADDLE_OCR=http://host:port`.
+
+## 스스로 일을 시작 — 목표 + 하트비트 (선택)
+
+명세: [specs/004-goals-heartbeat](../specs/004-goals-heartbeat/spec.md)
+
+```bash
+# 목표 등록 — 받은편지함 폴더에 새 화면이 오면 "화면 읽기" 워크플로로 읽는다
+curl -X POST localhost:8787/api/goals -H "Content-Type: application/json"   -d '{"text":"받은편지함에 새 화면이 오면 읽고 기억해 둔다","workflows":["<워크플로 ID>"],"inbox":"C:/inbox"}'
+
+# 하트비트 한 번 돌리기 (또는 .env 의 CONDUIT_HEARTBEAT=*/10 * * * * 로 10분마다)
+curl -X POST localhost:8787/api/heartbeat
+```
+
+- LLM 은 무엇을 할지 **제안만** 하고, 코드가 검증한 뒤 실행한다 (허용 워크플로 · 실제 근거 · 감지된 파일만).
+- 밖으로 내보내는 노드(슬랙·메일·업로드·코드 실행 등)가 있는 워크플로와 확신 낮은 제안은 `GET /api/heartbeat/pending` 에서 사람이 승인한다.
+- 키가 없으면 규칙 모드: 목표에 워크플로가 하나면 새 파일마다 그 워크플로를 실행한다.

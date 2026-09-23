@@ -4,13 +4,22 @@
 //   토큰: .env TELEGRAM_BOT_TOKEN
 //   허용 채팅: TELEGRAM_CHAT_ID (쉼표로 여러 개, 첫 번째가 기본 채팅)
 //   허용 사용자(선택): TELEGRAM_ALLOWED_USER_IDS — 그룹 채팅에서 아무나 누르지 못하게
+//   화면(쉬운 시작)에서 넣은 토큰은 자격 증명(type=telegram, 암호화)에, 허용 채팅은 설정(settings.telegram.chatIds)에 있다.
 // ============================================================
+import { Credentials, Settings } from './store.js';
+
 const API = (token) => `https://api.telegram.org/bot${token}`;
 const MAX_TEXT = 3500;                                   // 텔레그램 메시지 4096자 제한 안쪽
 
-export const tgToken = () => process.env.TELEGRAM_BOT_TOKEN || '';
+function credentialToken() {
+  try {
+    const c = Credentials.all().find((x) => x.type === 'telegram');
+    return c ? (Credentials.reveal(c.id)?.botToken || '') : '';
+  } catch { return ''; }
+}
+export const tgToken = () => process.env.TELEGRAM_BOT_TOKEN || credentialToken();
 const csv = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boolean);
-export const tgChatIds = () => csv(process.env.TELEGRAM_CHAT_ID);
+export const tgChatIds = () => [...new Set([...csv(process.env.TELEGRAM_CHAT_ID), ...(Settings.get('telegram').chatIds || []).map(String)])];
 export const tgUserIds = () => csv(process.env.TELEGRAM_ALLOWED_USER_IDS);
 export const tgDefaultChat = () => tgChatIds()[0] || '';
 
@@ -119,15 +128,19 @@ const refInReply = (m) => /\[(ap_[A-Za-z0-9_-]+)\]/.exec(String(m?.reply_to_mess
  * @returns {{ stop: () => void }}
  */
 export function startPolling({
-  token = tgToken(), allowedChatIds = tgChatIds(), allowedUserIds = tgUserIds(), onDecision,
+  token = tgToken(), allowedChatIds = tgChatIds, allowedUserIds = tgUserIds(), onDecision, onMessage, onCallback,
   fetchImpl = fetch, log = console.log, retryMs = 2000, idleMs = 0,
 } = {}) {
   let running = true;
   let offset = 0;
   let conflictLogged = false;
+  // 허용 채팅은 함수로도 받는다 — 화면에서 채팅을 허용하면 재시작 없이 바로 반영된다
+  const chats = () => (typeof allowedChatIds === 'function' ? allowedChatIds() : allowedChatIds);
   const allowed = (chatId, userId) =>
-    (!allowedChatIds.length || allowedChatIds.includes(String(chatId))) &&
+    (!chats().length || chats().includes(String(chatId))) &&
     (!allowedUserIds.length || allowedUserIds.includes(String(userId)));
+  // 받기(사진·글)는 허용 목록이 비어 있으면 아무도 허용하지 않는다 — 승인 버튼보다 엄격하게
+  const allowedStrict = (chatId, userId) => chats().includes(String(chatId)) && allowed(chatId, userId);
   const call = (m, b) => tgCall(m, b, { token, fetchImpl });
   const who = (from) => (from?.username ? '@' + from.username : (from?.first_name || String(from?.id || '')));
   const outcomeText = (r, okText) => (r?.already ? '이미 처리된 요청입니다'
@@ -141,6 +154,7 @@ export function startPolling({
       const chatId = String(q.message?.chat?.id ?? '');
       const userId = String(q.from?.id ?? '');
       const parsed = parseCallback(q.data);
+      if (!parsed && onCallback) return onCallback(q, { call, allowed: allowedStrict(chatId, userId), chatId, userId });
       if (!parsed) return call('answerCallbackQuery', { callback_query_id: q.id });
       if (!allowed(chatId, userId)) {
         log(`[telegram] 허용되지 않은 채팅/사용자(${chatId}/${userId})의 콜백 무시`);
@@ -164,6 +178,8 @@ export function startPolling({
       const userId = String(m.from?.id ?? '');
       const text = String(m.text || '');
       if (/^\/(start|id)\b/.test(text)) {
+        if (onMessage) await onMessage(m, { call, allowed: allowedStrict(chatId, userId), chatId, userId, command: 'start' });
+        if (onMessage) return null;                          // 연결 안내는 채널 쪽이 한다 (허용 여부에 따라 다르게)
         return call('sendMessage', { chat_id: chatId, text: `이 채팅의 ID: ${chatId}\n사용자 ID: ${userId}\n\n.env 의 TELEGRAM_CHAT_ID 에 채팅 ID 를 넣으면 승인 요청이 여기로 옵니다.` });
       }
       const approvalId = refInReply(m);                              // ✏️ 안내 메시지에 대한 답장인가
@@ -172,6 +188,7 @@ export function startPolling({
         const r = await onDecision({ approvalId, action: 'approve', by: who(m.from), chatId, userId, editedText: text.trim() });
         return call('sendMessage', { chat_id: chatId, text: outcomeText(r, '수정한 내용으로 승인했습니다'), reply_to_message_id: m.message_id });
       }
+      if (onMessage) return onMessage(m, { call, allowed: allowedStrict(chatId, userId), chatId, userId });
     }
   };
 

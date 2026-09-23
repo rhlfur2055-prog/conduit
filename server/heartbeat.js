@@ -44,7 +44,13 @@ export function senseInbox(goal, seen = InboxSeen) {
       let st;
       try { st = fs.statSync(p); } catch { return null; }
       if (!st.isFile()) return null;
-      return { path: p, name: n, size: st.size, key: `${goal.id}|${p}|${st.size}|${Math.round(st.mtimeMs)}` };
+      // 텔레그램으로 받은 파일은 옆에 .meta.json 이 있다 — 답장할 곳(replyTo)은 코드가 여기서만 정한다
+      let replyTo = null;
+      try {
+        const meta = JSON.parse(fs.readFileSync(`${p}.meta.json`, 'utf8'));
+        if (meta?.chatId) replyTo = { chatId: String(meta.chatId), messageId: meta.messageId ?? null, source: meta.source ?? null };
+      } catch { /* 폴더에 직접 넣은 파일 */ }
+      return { path: p, name: n, size: st.size, key: `${goal.id}|${p}|${st.size}|${Math.round(st.mtimeMs)}`, replyTo };
     })
     .filter((f) => f && !seen.has(f.key))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -143,7 +149,8 @@ export function validate(p, ctx, state, limits = HEARTBEAT_LIMITS) {
   if (!w) return { verdict: 'rejected', reason: `없는 워크플로 ${p.workflow}`, g };
   if (!g.goal.workflows.includes(w.wf.id)) return { verdict: 'rejected', reason: `목표 ${g.ref} 에 허용되지 않은 워크플로 ${w.ref}`, g };
 
-  const input = p.input && typeof p.input === 'object' && !Array.isArray(p.input) ? p.input : {};
+  // replyTo 는 LLM 이 정할 수 없다 (다른 채팅으로 보내게 하지 못하도록) — 제안에 있으면 버린다
+  const { replyTo: _ignored, ...input } = p.input && typeof p.input === 'object' && !Array.isArray(p.input) ? p.input : {};
   if (JSON.stringify(input).length > 4000) return { verdict: 'rejected', reason: '입력이 너무 크다', g };
   const mine = ctx.inputs.filter((i) => i.goalRef === g.ref);
   if (p.inputRef && !mine.some((i) => i.ref === p.inputRef)) return { verdict: 'rejected', reason: `목표 ${g.ref} 의 입력이 아닌 ${p.inputRef}`, g };
@@ -180,6 +187,7 @@ function triggerSeed(wf, input) {
 export async function runHeartbeat({ now = Date.now(), limits = HEARTBEAT_LIMITS, _deps = {} } = {}) {
   const llm = _deps.llm || callLLM;
   const exec = _deps.execute || runtimeExecute;
+  const notify = _deps.notify || (async (replyTo, execution) => (await import('./telegramChannel.js')).sendResult(replyTo, execution));
   const seen = _deps.seen || InboxSeen;
   const pending = _deps.pending || PendingActions;
   const beats = _deps.heartbeats || Heartbeats;
@@ -217,9 +225,14 @@ export async function runHeartbeat({ now = Date.now(), limits = HEARTBEAT_LIMITS
       state.runsThisBeat++;
       state.runsToday++;
       if (v.item) { state.handled.add(v.item.key); seen.mark(v.item.key, { status: 'run', goalId: row.goalId }); }
+      const replyTo = v.item?.replyTo || null;
       try {
-        const res = await exec(v.w.wf, { seed: triggerSeed(v.w.wf, v.input), trigger: 'agent' });
+        const res = await exec(v.w.wf, { seed: triggerSeed(v.w.wf, replyTo ? { ...v.input, replyTo } : v.input), trigger: 'agent' });
         row.execution = { id: res.execution.id, status: res.execution.status };
+        // 휴대폰에서 온 입력이면 결과를 그 채팅으로 답장 (모드가 보내기를 허용할 때만 — telegramChannel 이 판단)
+        if (replyTo) {
+          try { row.reply = await notify(replyTo, res.execution); } catch (e) { row.reply = { error: e.message }; }
+        }
       } catch (e) {
         row.execution = { id: null, status: 'error', error: e.message };
       }

@@ -243,6 +243,18 @@ export const Approvals = {
   },
 };
 
+/* ---------- 설정 (화면에서 바꾸는 값 — 비밀값은 여기 두지 않고 Credentials 에 암호화) ---------- */
+export const Settings = {
+  all: () => readJSON('settings.json', {}),
+  get: (section) => Settings.all()[section] || {},
+  set(section, patch) {
+    const all = Settings.all();
+    all[section] = { ...(all[section] || {}), ...patch };
+    writeJSON('settings.json', all);
+    return all[section];
+  },
+};
+
 /* ---------- 목표 · 하트비트 (specs/004-goals-heartbeat) ----------
    목표는 사람이 정한다. 하트비트 기록은 다음 하트비트의 "최근 결정" 으로 들어간다. */
 const HEARTBEATS_MAX = 200;

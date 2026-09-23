@@ -34,3 +34,21 @@ npm run dev     # http://localhost:5173
 ```
 
 프로덕션 빌드: `npm run build` → `dist/`
+
+## OCR 엔진 (선택) — PaddleOCR 서버
+
+OCR·소크라테스식 읽기 노드는 `engine: auto` 일 때 PaddleOCR 서버가 떠 있으면 그것을, 없으면 tesseract.js 를 씁니다.
+
+| 엔진 | 줄 내용 일치 (정답을 아는 한글·영문 360줄) | 속도 |
+|---|---|---|
+| tesseract.js (기본 설치) | 67% | 0.2초/문서 |
+| **PaddleOCR** | **97.2%** | 1.4초/문서 (CPU) |
+| 앙상블 (Paddle + tesseract 글자 투표) | 96.9~97.5% | 2~3초/문서 |
+
+```bash
+# Python 3.10~3.13 (paddle 휠이 3.14 에는 없다)
+pip install paddlepaddle paddleocr opencv-python numpy
+python server/ocr/paddle_ocr_server.py --port 8866
+```
+
+다른 주소면 `.env` 에 `CONDUIT_PADDLE_OCR=http://host:port`.

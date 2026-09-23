@@ -23,9 +23,10 @@ import { renderMemeComments } from './render-meme.js';
 import { renderClipStory } from './render-clipstory.js';
 import { requestApproval } from './approvals.js';
 import { telegramSend } from './telegram.js';
-import { ocr, understandScreen } from './vision.js';
+import { understandScreen } from './vision.js';
 import { plateRecognize } from './plateRecognize.js';
 import { socraticRead } from './socratic.js';
+import { readText } from './ocrEnsemble.js';
 
 export function installBridges() {
   globalThis.__conduitLLM = callLLM;
@@ -61,7 +62,7 @@ export function installBridges() {
     clipStory: renderClipStory,
     approval: requestApproval,   // 사람 승인 대기 — 스냅샷 저장 + 텔레그램 버튼 메시지
     telegram: telegramSend,
-    ocr,
+    ocr: (a) => readText(a),
     screenUnderstand: understandScreen,
     plateRecognize,
     socraticRead,

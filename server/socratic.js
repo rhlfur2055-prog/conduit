@@ -12,7 +12,8 @@
 // 같은 착각을 그대로 통과시키기 때문에, 원문 대조는 모델 밖에서 한다.
 // ============================================================
 import { callLLM } from './llm.js';
-import { ocr as runOcr, loadImage, parseJson } from './vision.js';
+import { loadImage, parseJson } from './vision.js';
+import { readText } from './ocrEnsemble.js';
 import { ReadingMemory } from './store.js';
 
 export const QUESTION_TYPES = ['definition', 'claim', 'evidence', 'assumption', 'counterexample', 'implication'];
@@ -255,12 +256,13 @@ const linesBlock = (lines) => lines.map((l) => `${l.id}: ${l.text}`).join('\n');
  * @param {string} [p.text]    이미 텍스트인 글
  * @param {string} [p.focus]   특히 알고 싶은 것 (첫 질문으로 들어간다)
  * @param {number} [p.rounds]  논박 라운드 수 (1 = 논박 없음)
+ * @param {string} [p.engine]  OCR 엔진 — auto(Paddle 서버가 있으면 Paddle, 없으면 tesseract) · paddle · ensemble · tesseract
  * @param {boolean}[p.learn]   실수를 기억에 쌓고 다음 읽기에 쓴다
  * @param {object} [p._deps]   테스트용 주입 { llm, ocr, memory }
  */
-export async function socraticRead({ image, text, lang = 'kor+eng', focus = '', rounds = 2, learn = true, model, _deps = {} } = {}) {
+export async function socraticRead({ image, text, lang = 'kor+eng', engine = 'auto', focus = '', rounds = 2, learn = true, model, _deps = {} } = {}) {
   const llm = _deps.llm || callLLM;
-  const ocr = _deps.ocr || runOcr;
+  const ocr = _deps.ocr || ((a) => readText({ ...a, engine }));
   const memory = _deps.memory || ReadingMemory;
   const maxRounds = Math.min(Math.max(Number(rounds) || 1, 1), 4);
   const lessons = learn ? lessonsText(memory.get()) : { glyph: '', reading: '' };
@@ -410,7 +412,7 @@ export async function socraticRead({ image, text, lang = 'kor+eng', focus = '', 
     rejectedCorrections,
     trace,
     usage,
-    ocr: ocrResult ? { confidence: ocrResult.confidence, simulated: ocrResult.simulated } : null,
+    ocr: ocrResult ? { engine: ocrResult.engine, confidence: ocrResult.confidence, simulated: ocrResult.simulated, note: ocrResult.note } : null,
     simulated: false,
   };
 }

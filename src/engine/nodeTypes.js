@@ -403,16 +403,17 @@ export const NODE_TYPES = {
   ocr: {
     title: 'OCR (이미지 → 텍스트)', icon: 'globe', color: '#1a7f5a', category: 'AI', backend: true,
     inputs: ['main'], outputs: ['main'],
-    defaults: { image: '{{ $json.image }}', lang: 'kor+eng', minConfidence: '60' },
+    defaults: { image: '{{ $json.image }}', engine: 'auto', lang: 'kor+eng', minConfidence: '60' },
     fields: [
       { key: 'image', label: '이미지 — 파일 경로 · data:URL · base64', type: 'text' },
-      { key: 'lang', label: '언어', type: 'select', options: ['kor+eng', 'kor', 'eng', 'jpn', 'chi_sim'] },
-      { key: 'minConfidence', label: '최소 신뢰도 (0~100) — 낮은 단어는 버린다', type: 'text' },
+      { key: 'engine', label: '엔진 — auto: Paddle 서버가 있으면 Paddle(실측 97%), 없으면 tesseract(67%)', type: 'select', options: ['auto', 'paddle', 'ensemble', 'tesseract'] },
+      { key: 'lang', label: '언어 (tesseract)', type: 'select', options: ['kor+eng', 'kor', 'eng', 'jpn', 'chi_sim'] },
+      { key: 'minConfidence', label: '최소 신뢰도 (0~100, tesseract) — 낮은 단어는 버린다', type: 'text' },
     ],
-    summary: (p) => `OCR ${p.lang}`,
-    // tesseract.js — 오프라인, API 키 불필요
+    summary: (p) => `OCR ${p.engine || 'auto'} · ${p.lang}`,
+    // Paddle 서버(server/ocr/paddle_ocr_server.py)가 없으면 tesseract.js — 오프라인, API 키 불필요
     run: async (i, p) => {
-      const r = await callIntegration('ocr', { image: p.image, lang: p.lang, minConfidence: p.minConfidence });
+      const r = await callIntegration('ocr', { image: p.image, engine: p.engine || 'auto', lang: p.lang, minConfidence: p.minConfidence });
       return { main: { ...(i.main || {}), ocr: r } };
     },
   },
@@ -458,12 +459,13 @@ export const NODE_TYPES = {
   socraticRead: {
     title: '소크라테스식 읽기 (검증된 이해)', icon: 'sparkles', color: '#7c5cbf', category: 'AI', backend: true,
     inputs: ['main'], outputs: ['main'],
-    defaults: { image: '{{ $json.image }}', text: '', focus: '', lang: 'kor+eng', rounds: '2', learn: 'true', model: 'claude-sonnet-5' },
+    defaults: { image: '{{ $json.image }}', text: '', focus: '', engine: 'auto', lang: 'kor+eng', rounds: '2', learn: 'true', model: 'claude-sonnet-5' },
     fields: [
       { key: 'image', label: '이미지 — 파일 경로 · data:URL · base64 (비우면 텍스트를 읽는다)', type: 'text' },
       { key: 'text', label: '텍스트 (이미지가 없을 때)', type: 'textarea' },
       { key: 'focus', label: '특히 알고 싶은 것 (선택)', type: 'text' },
-      { key: 'lang', label: 'OCR 언어', type: 'select', options: ['kor+eng', 'kor', 'eng', 'jpn', 'chi_sim'] },
+      { key: 'engine', label: 'OCR 엔진', type: 'select', options: ['auto', 'paddle', 'ensemble', 'tesseract'] },
+      { key: 'lang', label: 'OCR 언어 (tesseract)', type: 'select', options: ['kor+eng', 'kor', 'eng', 'jpn', 'chi_sim'] },
       { key: 'rounds', label: '논박 라운드 — 반박된 답을 다시 묻는 횟수 포함', type: 'select', options: ['1', '2', '3', '4'] },
       { key: 'learn', label: '실수에서 배우기 (다음 읽기에 반영)', type: 'select', options: ['true', 'false'] },
       { key: 'model', label: '모델', type: 'select', options: AI_MODELS },
@@ -472,7 +474,7 @@ export const NODE_TYPES = {
     // 답은 LLM 이, 인용 대조는 코드가 한다 — 원문에 없는 인용으로 만든 답은 이해에 들어가지 않는다
     run: async (i, p) => {
       const r = await callIntegration('socraticRead', {
-        image: p.image, text: p.text, focus: p.focus, lang: p.lang,
+        image: p.image, text: p.text, focus: p.focus, engine: p.engine || 'auto', lang: p.lang,
         rounds: Number(p.rounds) || 2, learn: p.learn !== 'false', model: p.model,
       });
       return { main: { ...(i.main || {}), reading: r } };

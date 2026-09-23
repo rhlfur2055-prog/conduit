@@ -20,7 +20,7 @@ export function getApiKey() {
   return null;
 }
 
-export async function callLLM({ system, prompt, model, messages }) {
+export async function callLLM({ system, prompt, model, messages, maxTokens = 1024 }) {
   const key = getApiKey();
   const useModel = model || 'claude-sonnet-5';
 
@@ -42,7 +42,7 @@ export async function callLLM({ system, prompt, model, messages }) {
       },
       body: JSON.stringify({
         model: useModel,
-        max_tokens: 1024,
+        max_tokens: Number(maxTokens) || 1024,
         system: system || undefined,
         messages: msgs,
       }),

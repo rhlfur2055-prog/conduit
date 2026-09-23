@@ -455,6 +455,29 @@ export const NODE_TYPES = {
       return { main: { ...(i.main || {}), screen: r } };
     },
   },
+  socraticRead: {
+    title: '소크라테스식 읽기 (검증된 이해)', icon: 'sparkles', color: '#7c5cbf', category: 'AI', backend: true,
+    inputs: ['main'], outputs: ['main'],
+    defaults: { image: '{{ $json.image }}', text: '', focus: '', lang: 'kor+eng', rounds: '2', learn: 'true', model: 'claude-sonnet-5' },
+    fields: [
+      { key: 'image', label: '이미지 — 파일 경로 · data:URL · base64 (비우면 텍스트를 읽는다)', type: 'text' },
+      { key: 'text', label: '텍스트 (이미지가 없을 때)', type: 'textarea' },
+      { key: 'focus', label: '특히 알고 싶은 것 (선택)', type: 'text' },
+      { key: 'lang', label: 'OCR 언어', type: 'select', options: ['kor+eng', 'kor', 'eng', 'jpn', 'chi_sim'] },
+      { key: 'rounds', label: '논박 라운드 — 반박된 답을 다시 묻는 횟수 포함', type: 'select', options: ['1', '2', '3', '4'] },
+      { key: 'learn', label: '실수에서 배우기 (다음 읽기에 반영)', type: 'select', options: ['true', 'false'] },
+      { key: 'model', label: '모델', type: 'select', options: AI_MODELS },
+    ],
+    summary: (p) => `스스로 묻고 원문으로 검증 · ${p.rounds || 2}라운드`,
+    // 답은 LLM 이, 인용 대조는 코드가 한다 — 원문에 없는 인용으로 만든 답은 이해에 들어가지 않는다
+    run: async (i, p) => {
+      const r = await callIntegration('socraticRead', {
+        image: p.image, text: p.text, focus: p.focus, lang: p.lang,
+        rounds: Number(p.rounds) || 2, learn: p.learn !== 'false', model: p.model,
+      });
+      return { main: { ...(i.main || {}), reading: r } };
+    },
+  },
   stopError: {
     title: '중단 & 오류', icon: 'close', color: '#c0563f', category: '흐름 제어',
     inputs: ['main'], outputs: [],

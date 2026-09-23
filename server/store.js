@@ -243,6 +243,33 @@ export const Approvals = {
   },
 };
 
+/* ---------- 읽기 기억 (socraticRead 가 실수에서 배운 것) ----------
+   모델 가중치는 바꿀 수 없으니, 확인된 실수를 모아 다음 읽기의 프롬프트에 넣는다.
+   - confusions : OCR 이 잘못 읽고 대조 단계에서 바로잡힌 글자 쌍 ("라→나": 횟수)
+   - mistakes   : 검증기에 걸린 인용 실수 종류별 횟수 (paraphrased · wrong_line · fabricated)
+   - examples   : 최근 실수 사례 (프롬프트에 그대로 보여 준다) */
+const READING_EXAMPLES_MAX = 20;
+
+export const ReadingMemory = {
+  get: () => readJSON('reading-memory.json', { confusions: {}, mistakes: {}, examples: [], runs: 0 }),
+  record({ confusions = [], mistakes = [] } = {}) {
+    const m = ReadingMemory.get();
+    for (const c of confusions) {
+      const key = `${c.from}→${c.to}`;
+      m.confusions[key] = (m.confusions[key] || 0) + 1;
+    }
+    for (const x of mistakes) {
+      m.mistakes[x.kind] = (m.mistakes[x.kind] || 0) + 1;
+      m.examples = [{ kind: x.kind, quote: x.quote, line: x.line, at: new Date().toISOString() }, ...m.examples]
+        .slice(0, READING_EXAMPLES_MAX);
+    }
+    m.runs = (m.runs || 0) + 1;
+    writeJSON('reading-memory.json', m);
+    return m;
+  },
+  reset() { writeJSON('reading-memory.json', { confusions: {}, mistakes: {}, examples: [], runs: 0 }); },
+};
+
 /* ---------- 크리덴셜 (data 는 암호화 저장) ---------- */
 export const Credentials = {
   all: () => readJSON('credentials.json', []),

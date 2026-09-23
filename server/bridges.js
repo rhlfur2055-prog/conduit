@@ -25,6 +25,7 @@ import { requestApproval } from './approvals.js';
 import { telegramSend } from './telegram.js';
 import { ocr, understandScreen } from './vision.js';
 import { plateRecognize } from './plateRecognize.js';
+import { socraticRead } from './socratic.js';
 
 export function installBridges() {
   globalThis.__conduitLLM = callLLM;
@@ -63,6 +64,7 @@ export function installBridges() {
     ocr,
     screenUnderstand: understandScreen,
     plateRecognize,
+    socraticRead,
     mcp: async ({ credential, tool, args }) => {
       if (!tool) return mcpListTools(credential);
       let parsed = {};

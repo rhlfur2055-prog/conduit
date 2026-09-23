@@ -9,8 +9,7 @@ import { ttsSegment, ttsText } from './ttsseg.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const PIPELINE_DIR = 'C:/workflow/video-pipeline';
-const OUT_DIR = path.join(PIPELINE_DIR, 'out');
+import { PIPELINE_DIR, OUT_DIR } from './videoPipeline.js';
 const run = (cmd, args, cwd, timeoutMs) => runCommand(cmd, args, { cwd, timeoutMs });
 
 const MAX_LINE = 24;

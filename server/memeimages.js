@@ -8,11 +8,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { PIPELINE_DIR } from './videoPipeline.js';
 
 const API = 'https://api.openverse.org/v1/images/';
 // Wikimedia 는 연락처가 있는 User-Agent 를 요구한다 (없으면 차단될 수 있다)
 const UA = 'ConduitShorts/1.0 (https://github.com/rhlfur2055-prog/conduit)';
-export const MEME_DIR = 'C:/workflow/video-pipeline/public/memes';
+export const MEME_DIR = path.join(PIPELINE_DIR, 'public', 'memes');
 
 const LICENSE_NAME = { cc0: 'CC0 1.0', pdm: 'Public Domain Mark 1.0', by: 'CC BY', 'by-sa': 'CC BY-SA' };
 

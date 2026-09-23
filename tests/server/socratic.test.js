@@ -247,3 +247,81 @@ describe('ReadingMemory — 파일에 쌓인다', () => {
     expect(m.runs).toBe(2);
   });
 });
+
+/* ---------- T011 — 장기 기억을 문맥으로 (specs/001-verified-memory US1 · FR-006 FR-007 · SC-005) ---------- */
+
+const NOTICE = ['연체 안내', '결제일 다음 날부터 연체 이자가 붙습니다.', '이자율은 연 15%입니다.'].join('\n');
+const MEM = [{ id: 'm_card', text: '신한카드 결제일은 매월 14일입니다.', docId: 'card', source: { readAt: '2026-09-20T00:00:00Z' }, score: 0.9 }];
+
+function memDeps(llm, recalled = MEM) {
+  const calls = { recall: [], remember: [] };
+  return {
+    calls,
+    deps: {
+      llm, memory: fakeMemory(),
+      recall: async (a) => { calls.recall.push(a); return { results: recalled, embedded: true }; },
+      remember: async (a) => { calls.remember.push(a); return { added: 1 }; },
+    },
+  };
+}
+
+describe('socraticRead + 장기 기억', () => {
+  it('관련 기억을 M 번호로 넣고, 연결 답은 L 과 M 을 둘 다 인용해야 통과한다', async () => {
+    const prover = JSON.stringify({ questions: [
+      { id: 'Q1', type: 'connection', q: '전에 읽은 결제일과 어떻게 이어지나?', a: '14일 결제일 다음 날, 즉 15일부터 이자가 붙는다',
+        evidence: [{ line: 'L2', quote: '결제일 다음 날부터 연체 이자가 붙습니다' }, { line: 'M1', quote: '결제일은 매월 14일입니다' }] },
+      { id: 'Q2', type: 'connection', q: '연결?', a: '14일', evidence: [{ line: 'L2', quote: '결제일 다음 날부터' }] },                 // M 없음
+      { id: 'Q3', type: 'connection', q: '연결?', a: '20일', evidence: [{ line: 'L2', quote: '결제일 다음 날부터' }, { line: 'M1', quote: '결제일은 매월 20일입니다' }] },  // 기억에 없는 인용
+      { id: 'Q4', type: 'claim', q: '핵심?', a: '연체 이자', evidence: [{ line: 'L2', quote: '연체 이자가 붙습니다' }] },
+    ] });
+    const synth = JSON.stringify({ sentences: ['결제일(14일) 다음 날부터 연체 이자가 붙는다 [L2, M1]', '20일부터다 [M9]'] });
+    const llm = scriptedLLM([prover, synth]);
+    const { deps, calls } = memDeps(llm);
+    const r = await socraticRead({ text: NOTICE, rounds: 1, memory: true, docId: 'notice', _deps: deps });
+
+    expect(llm.calls[0].prompt).toMatch(/M1: 신한카드 결제일은 매월 14일입니다/);
+    expect(llm.calls[0].system).toMatch(/connection/);
+    const st = Object.fromEntries(r.questions.map((q) => [q.id, [q.status, q.reason]]));
+    expect(st.Q1[0]).toBe('verified');
+    expect(st.Q2).toEqual(['refuted', 'connection_needs_both']);
+    expect(st.Q3[0]).toBe('refuted');                         // SC-005: 기억에 없는 인용은 반박
+    expect(r.sentences).toEqual(['결제일(14일) 다음 날부터 연체 이자가 붙는다 [L2, M1]']);
+    expect(calls.recall[0]).toMatchObject({ excludeDocId: 'notice' });
+    expect(r.memory.recalled[0]).toMatchObject({ id: 'M1', docId: 'card' });
+  });
+
+  it('관련 기억이 없으면 연결 질문은 지어내지 않고 "기억에 없음"', async () => {
+    const prover = JSON.stringify({ questions: [
+      { id: 'Q1', type: 'connection', q: '전에 읽은 것과?', a: '결제일과 이어진다', evidence: [{ line: 'L2', quote: '결제일 다음 날부터' }] },
+    ] });
+    const { deps } = memDeps(scriptedLLM([prover]), []);
+    const r = await socraticRead({ text: NOTICE, rounds: 1, memory: true, _deps: deps });
+    expect(r.questions[0]).toMatchObject({ status: 'unanswerable', reason: 'no_memory' });
+    expect(r.unanswered[0].missing).toBe('관련 기억 없음');
+  });
+
+  it('끝나면 원문 L 줄과 검증된 문답만 기억에 넘긴다 — 반박된 답은 넘기지 않는다 (SC-004)', async () => {
+    const prover = JSON.stringify({ questions: [
+      { id: 'Q1', type: 'claim', q: '핵심?', a: '연체 이자', evidence: [{ line: 'L2', quote: '연체 이자가 붙습니다' }] },
+      { id: 'Q2', type: 'evidence', q: '이자율?', a: '연 20%', evidence: [{ line: 'L3', quote: '이자율은 연 20%입니다' }] },   // 지어냄 → 반박
+    ] });
+    const synth = JSON.stringify({ sentences: ['연체 이자가 붙는다 [L2]'] });
+    const { deps, calls } = memDeps(scriptedLLM([prover, synth]), []);
+    await socraticRead({ text: NOTICE, rounds: 1, memory: true, docId: 'notice', title: '연체 안내', _deps: deps });
+
+    const saved = calls.remember[0];
+    expect(saved.docId).toBe('notice');
+    expect(saved.units.map((u) => u.id)).toEqual(['L1', 'L2', 'L3']);
+    expect(saved.facts).toHaveLength(1);
+    expect(saved.facts[0]).toMatchObject({ verified: true, quote: ['연체 이자가 붙습니다'], lines: ['L2'] });
+    expect(saved.facts.some((f) => f.text.includes('20%'))).toBe(false);
+    expect(saved.source).toMatchObject({ title: '연체 안내', ocrEngine: 'text' });
+  });
+
+  it('memory 를 켜지 않으면 기억을 찾지도 저장하지도 않는다', async () => {
+    const { deps, calls } = memDeps(scriptedLLM([prover, synth]));
+    await socraticRead({ text: DOC, rounds: 1, _deps: deps });
+    expect(calls.recall).toHaveLength(0);
+    expect(calls.remember).toHaveLength(0);
+  });
+});

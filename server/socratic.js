@@ -14,9 +14,11 @@
 import { callLLM } from './llm.js';
 import { loadImage, parseJson } from './vision.js';
 import { readText } from './ocrEnsemble.js';
+import crypto from 'node:crypto';
 import { ReadingMemory } from './store.js';
+import { recall as recallMemory, remember as rememberMemory } from './memory/memory.js';
 
-export const QUESTION_TYPES = ['definition', 'claim', 'evidence', 'assumption', 'counterexample', 'implication'];
+export const QUESTION_TYPES = ['definition', 'claim', 'evidence', 'assumption', 'counterexample', 'implication', 'connection'];
 
 const MIN_QUOTE = 2;              // 이보다 짧은 인용은 근거로 치지 않는다 ("이", "a" 같은 것)
 const PARAPHRASE_SIM = 0.75;      // 원문과 이만큼 비슷하면 "의역", 그 아래는 "지어냄"
@@ -87,9 +89,9 @@ export function numberLines(source) {
     ? source.map((l) => (typeof l === 'string' ? { text: l } : l))
     : String(source ?? '').split(/\r?\n/).map((text) => ({ text }));
   return raw
-    .map((l) => ({ text: String(l.text ?? '').trim(), y: l.box?.y ?? l.y }))
+    .map((l) => ({ text: String(l.text ?? '').trim(), y: l.box?.y ?? l.y, box: l.box }))
     .filter((l) => l.text)
-    .map((l, i) => ({ id: `L${i + 1}`, text: l.text, ...(l.y !== undefined ? { y: l.y } : {}) }));
+    .map((l, i) => ({ id: `L${i + 1}`, text: l.text, ...(l.y !== undefined ? { y: l.y } : {}), ...(l.box ? { box: l.box } : {}) }));
 }
 
 /** 원문 전체에서 quote 와 가장 비슷한 구간의 유사도 (의역/지어냄 판별용).
@@ -184,7 +186,7 @@ export function checkSentences(sentences, allowedLines) {
   for (const s of Array.isArray(sentences) ? sentences : []) {
     const text = String(s ?? '').trim();
     if (!text) continue;
-    const tags = [...text.matchAll(/\[(L\d+|V\d+)(?:\s*[,·]\s*(L\d+|V\d+))*\]/g)]
+    const tags = [...text.matchAll(/\[([LVM]\d+)(?:\s*[,·]\s*([LVM]\d+))*\]/g)]
       .flatMap((m) => m[0].slice(1, -1).split(/\s*[,·]\s*/));
     if (!tags.length) { dropped.push({ text, reason: '근거 줄 표시 없음' }); continue; }
     const outside = tags.filter((t) => !allowedLines.has(t));
@@ -241,8 +243,14 @@ const PROVER_SYSTEM = `너는 소크라테스식으로 글을 읽는 독자다. 
 JSON 하나만 출력한다:
 {"questions":[{"id":"Q1","type":"claim","parent":null,"q":"질문","a":"답","answerable":true,"inference":false,"evidence":[{"line":"L3","quote":"원문 그대로"}]}]}`;
 
+const MEMORY_RULE = `이전에 읽은 기억이 M 번호로 주어진다 (예: M1). 기억은 지금 글이 아니라 전에 읽은 글이다.
+- 질문 유형 connection 을 1~2개 더한다: "이 글은 전에 읽은 M? 와 어떻게 이어지나? 모순되나?"
+- connection 답의 evidence 에는 지금 글(L) 인용과 기억(M) 인용이 둘 다 있어야 한다. 기억도 글자 그대로 인용한다.
+- 관련된 기억이 없으면 connection 은 answerable:false 로 두고 "관련 기억 없음" 이라고 적는다. 연결을 지어내지 마라.
+- 기억은 지금 글의 사실을 대신하지 못한다. 다른 유형의 답은 지금 글(L)을 근거로 한다.`;
+
 const SYNTH_SYSTEM = `너는 검증을 통과한 문답만 보고 글을 이해한 내용을 정리한다.
-3~6문장으로 쓴다. 모든 문장 끝에 근거 줄을 [L3] 또는 [L3, L5] 형태로 붙인다.
+3~6문장으로 쓴다. 모든 문장 끝에 근거 줄을 [L3] 또는 [L3, M1] 형태로 붙인다 (M 은 전에 읽은 기억).
 주어진 문답에 없는 내용은 쓰지 마라. 추론(inference)에서 온 문장은 "추론:" 으로 시작한다.
 JSON 하나만 출력한다: {"sentences":["문장 [L3]"]}`;
 
@@ -258,12 +266,16 @@ const linesBlock = (lines) => lines.map((l) => `${l.id}: ${l.text}`).join('\n');
  * @param {number} [p.rounds]  논박 라운드 수 (1 = 논박 없음)
  * @param {string} [p.engine]  OCR 엔진 — auto(Paddle 서버가 있으면 Paddle, 없으면 tesseract) · paddle · ensemble · tesseract
  * @param {boolean}[p.learn]   실수를 기억에 쌓고 다음 읽기에 쓴다
- * @param {object} [p._deps]   테스트용 주입 { llm, ocr, memory }
+ * @param {boolean}[p.memory]  장기 기억 사용 — 읽기 전에 관련 기억(M)을 찾아 넣고, 끝나면 원문과 검증된 사실만 저장한다
+ * @param {string} [p.docId]   기억에 남길 문서 ID (없으면 내용 해시)
+ * @param {object} [p._deps]   테스트용 주입 { llm, ocr, memory, recall, remember }
  */
-export async function socraticRead({ image, text, lang = 'kor+eng', engine = 'auto', focus = '', rounds = 2, learn = true, model, _deps = {} } = {}) {
+export async function socraticRead({ image, text, lang = 'kor+eng', engine = 'auto', focus = '', rounds = 2, learn = true, memory: useMemory = false, docId, title = '', model, _deps = {} } = {}) {
   const llm = _deps.llm || callLLM;
   const ocr = _deps.ocr || ((a) => readText({ ...a, engine }));
   const memory = _deps.memory || ReadingMemory;
+  const recallFn = _deps.recall || recallMemory;
+  const rememberFn = _deps.remember || rememberMemory;
   const maxRounds = Math.min(Math.max(Number(rounds) || 1, 1), 4);
   const lessons = learn ? lessonsText(memory.get()) : { glyph: '', reading: '' };
   const trace = [];
@@ -318,19 +330,47 @@ export async function socraticRead({ image, text, lang = 'kor+eng', engine = 'au
     trace.push({ step: 'glyph', corrected: acc.lines.filter((l) => l.source === 'corrected').length, added: added.length, rejected: rejectedCorrections.length });
   }
 
+  /* 2.5) 장기 기억 — 관련된 것만 M 번호로 (문턱을 못 넘으면 아무것도 넣지 않는다) */
+  const doc = docId || `d_${crypto.createHash('sha1').update(lines.map((l) => l.text).join('\n')).digest('hex').slice(0, 12)}`;
+  let memLines = [];
+  let recallNote;
+  if (useMemory) {
+    const query = [focus, lines.map((l) => l.text).join(' ')].filter(Boolean).join(' ').slice(0, 600);
+    const rc = await recallFn({ query, excludeDocId: doc });
+    recallNote = rc.note;
+    memLines = (rc.results || []).map((m, i) => ({ id: `M${i + 1}`, text: m.text, memoryId: m.id, docId: m.docId, source: m.source, score: m.score }));
+    trace.push({ step: 'recall', found: memLines.length, embedded: rc.embedded });
+  }
+  const memBlock = memLines.length
+    ? `이전에 읽은 기억 (M 번호: 내용 — 읽은 날):\n${memLines.map((m) => `${m.id}: ${m.text} — ${String(m.source?.readAt ?? '').slice(0, 10)}`).join('\n')}`
+    : '';
+  const proverSystem = [PROVER_SYSTEM, useMemory ? MEMORY_RULE : '', lessons.reading].filter(Boolean).join('\n\n');
+  const evidenceLines = [...lines, ...memLines];
+  // connection 은 지금 글(L·V)과 기억(M)을 둘 다 인용해야 통과한다. 기억이 없으면 "기억에 없음".
+  const verify = (q) => {
+    const v = verifyQuestion(q, evidenceLines);
+    if (v.type !== 'connection') return v;
+    if (!memLines.length) return { ...v, status: 'unanswerable', reason: 'no_memory', a: v.answerable === false ? v.a : '관련 기억 없음' };
+    if (v.status !== 'verified') return v;
+    const ids = v.evidence.map((e) => e.line);
+    if (!ids.some((l) => /^[LV]/.test(l)) || !ids.some((l) => /^M/.test(l))) return { ...v, status: 'refuted', reason: 'connection_needs_both' };
+    return v;
+  };
+
   /* 3) 자기 질문 + 답 */
   const userText = [
     `원문 (줄 번호: 내용):\n${linesBlock(lines)}`,
+    memBlock,
     focus ? `특히 알고 싶은 것 (첫 질문으로 다뤄라): ${focus}` : '',
   ].filter(Boolean).join('\n\n');
-  const first = await ask({ system: [PROVER_SYSTEM, lessons.reading].filter(Boolean).join('\n\n'), prompt: userText });
+  const first = await ask({ system: proverSystem, prompt: userText });
   if (first.simulated) return { simulated: true, note: 'ANTHROPIC_API_KEY 가 없어 소크라테스식 읽기는 건너뛰었습니다.', lines, ocr: ocrResult };
   if (first.error) return { error: true, note: first.text, lines, ocr: ocrResult };
   const parsed = parseJson(first.text);
   if (!Array.isArray(parsed?.questions)) return { error: true, note: '질문 JSON 파싱 실패', raw: first.text, lines, ocr: ocrResult };
 
   /* 4) 검증 + 논박 */
-  let questions = parsed.questions.map((q, i) => verifyQuestion({ id: q.id || `Q${i + 1}`, ...q }, lines));
+  let questions = parsed.questions.map((q, i) => verify({ id: q.id || `Q${i + 1}`, ...q }));
   const mistakes = [];
   const collect = (qs) => {
     for (const q of qs) {
@@ -348,14 +388,15 @@ export async function socraticRead({ image, text, lang = 'kor+eng', engine = 'au
     if (!refuted.length) break;
     const objections = refuted.map((q) => {
       const bad = (q.evidence || []).find((ev) => !ev.check?.ok);
-      const why = !bad ? '근거 인용이 없다'
+      const why = q.reason === 'connection_needs_both' ? '연결 답은 지금 글(L) 인용과 기억(M) 인용이 둘 다 있어야 한다'
+        : !bad ? '근거 인용이 없다'
         : bad.check.kind === 'paraphrased' ? `인용 "${bad.quote}" 는 원문을 의역했다. 원문은 글자 그대로 복사해야 한다`
         : bad.check.kind === 'too_short' ? `인용 "${bad.quote}" 는 너무 짧아 근거가 되지 못한다`
         : `인용 "${bad.quote}" 는 원문 어디에도 없다`;
       return `${q.id} (${q.type}) "${q.q}"\n  너의 답: ${q.a}\n  반박: ${why}.`;
     }).join('\n\n');
     const r = await ask({
-      system: [PROVER_SYSTEM, lessons.reading].filter(Boolean).join('\n\n'),
+      system: proverSystem,
       prompt: `${userText}\n\n아래 답들은 검증에서 반박됐다. 원문에서 글자 그대로의 근거를 다시 찾아 답을 고치거나, 원문만으로 답할 수 없으면 answerable:false 로 바꿔라. 이 질문들만, 같은 id 로, 같은 JSON 형식으로 출력한다.\n\n${objections}`,
     });
     const fixed = parseJson(r.text);
@@ -366,7 +407,7 @@ export async function socraticRead({ image, text, lang = 'kor+eng', engine = 'au
     const byId = new Map(fixed.questions.map((q) => [q.id, q]));
     questions = questions.map((q) => {
       if (q.status !== 'refuted' || !byId.has(q.id)) return q;
-      const v = verifyQuestion({ ...q, ...byId.get(q.id), id: q.id }, lines);
+      const v = verify({ ...q, ...byId.get(q.id), id: q.id });
       return { ...v, rounds: (q.rounds || 1) + 1, repaired: v.status === 'verified' };
     });
     trace.push({ step: 'elenchus', round, retried: refuted.length, stillRefuted: questions.filter((q) => q.status === 'refuted').length });
@@ -378,13 +419,29 @@ export async function socraticRead({ image, text, lang = 'kor+eng', engine = 'au
   let understanding = { kept: [], dropped: [] };
   if (verified.length) {
     const qa = verified.map((q) => ({ type: q.type, q: q.q, a: q.a, inference: !!q.inference, lines: q.evidence.map((ev) => ev.line) }));
-    const r = await ask({ system: SYNTH_SYSTEM, prompt: `검증된 문답:\n${JSON.stringify(qa, null, 1)}\n\n원문:\n${linesBlock(lines)}` });
+    const r = await ask({ system: SYNTH_SYSTEM, prompt: `검증된 문답:\n${JSON.stringify(qa, null, 1)}\n\n원문:\n${linesBlock(lines)}${memBlock ? `\n\n${memBlock}` : ''}` });
     const s = parseJson(r.text);
     understanding = checkSentences(s?.sentences, allowed);
   }
 
   /* 6) 학습 */
   if (learn && (confusions.length || mistakes.length)) memory.record({ confusions, mistakes });
+
+  /* 7) 장기 기억 저장 — 원문(OCR 이 읽은 L 줄. 이미지로만 본 V 줄은 뺀다) + 검증된 문답만 */
+  let stored = null;
+  if (useMemory) {
+    stored = await rememberFn({
+      docId: doc,
+      units: lines.filter((l) => l.id.startsWith('L')),
+      source: { title, ocrEngine: ocrResult?.engine ?? (image ? null : 'text'), ocrConfidence: ocrResult?.confidence ?? null },
+      facts: verified.map((q) => ({
+        text: `${q.q} ${q.a}`,
+        quote: q.evidence.map((e) => e.quote),
+        lines: q.evidence.map((e) => e.line).filter((l) => !l.startsWith('M')),
+        verified: true,
+      })),
+    });
+  }
 
   const count = (st) => questions.filter((q) => q.status === st).length;
   const answerable = questions.length - count('unanswerable');
@@ -409,6 +466,7 @@ export async function socraticRead({ image, text, lang = 'kor+eng', engine = 'au
       rejectedCorrections: rejectedCorrections.length,
     },
     learned: learn ? { confusions, mistakes: mistakes.map((m) => m.kind) } : null,
+    memory: useMemory ? { docId: doc, recalled: memLines.map(({ id, text: t, docId: d, score }) => ({ id, text: t, docId: d, score })), note: recallNote, stored } : null,
     rejectedCorrections,
     trace,
     usage,

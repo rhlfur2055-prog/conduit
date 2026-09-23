@@ -459,15 +459,17 @@ export const NODE_TYPES = {
   socraticRead: {
     title: '소크라테스식 읽기 (검증된 이해)', icon: 'sparkles', color: '#7c5cbf', category: 'AI', backend: true,
     inputs: ['main'], outputs: ['main'],
-    defaults: { image: '{{ $json.image }}', text: '', focus: '', engine: 'auto', lang: 'kor+eng', rounds: '2', learn: 'true', model: 'claude-sonnet-5' },
+    defaults: { image: '{{ $json.image }}', text: '', focus: '', title: '', engine: 'auto', lang: 'kor+eng', rounds: '2', learn: 'true', memory: 'true', model: 'claude-sonnet-5' },
     fields: [
       { key: 'image', label: '이미지 — 파일 경로 · data:URL · base64 (비우면 텍스트를 읽는다)', type: 'text' },
       { key: 'text', label: '텍스트 (이미지가 없을 때)', type: 'textarea' },
       { key: 'focus', label: '특히 알고 싶은 것 (선택)', type: 'text' },
+      { key: 'title', label: '제목 (기억에 출처로 남는다, 선택)', type: 'text' },
       { key: 'engine', label: 'OCR 엔진', type: 'select', options: ['auto', 'paddle', 'ensemble', 'tesseract'] },
       { key: 'lang', label: 'OCR 언어 (tesseract)', type: 'select', options: ['kor+eng', 'kor', 'eng', 'jpn', 'chi_sim'] },
       { key: 'rounds', label: '논박 라운드 — 반박된 답을 다시 묻는 횟수 포함', type: 'select', options: ['1', '2', '3', '4'] },
       { key: 'learn', label: '실수에서 배우기 (다음 읽기에 반영)', type: 'select', options: ['true', 'false'] },
+      { key: 'memory', label: '장기 기억 — 전에 읽은 것과 연결하고, 검증된 것만 기억한다', type: 'select', options: ['true', 'false'] },
       { key: 'model', label: '모델', type: 'select', options: AI_MODELS },
     ],
     summary: (p) => `스스로 묻고 원문으로 검증 · ${p.rounds || 2}라운드`,
@@ -475,7 +477,7 @@ export const NODE_TYPES = {
     run: async (i, p) => {
       const r = await callIntegration('socraticRead', {
         image: p.image, text: p.text, focus: p.focus, engine: p.engine || 'auto', lang: p.lang,
-        rounds: Number(p.rounds) || 2, learn: p.learn !== 'false', model: p.model,
+        rounds: Number(p.rounds) || 2, learn: p.learn !== 'false', memory: p.memory !== 'false', title: p.title, model: p.model,
       });
       return { main: { ...(i.main || {}), reading: r } };
     },
@@ -489,6 +491,22 @@ export const NODE_TYPES = {
     run: async (_i, p) => { throw new Error(p.message || '중단'); },
   },
 
+  memoryRecall: {
+    title: '기억 검색 (검증된 읽기 기억)', icon: 'search', color: '#7c5cbf', category: 'AI', backend: true,
+    inputs: ['main'], outputs: ['main'],
+    defaults: { query: '{{ $json.query }}', k: '5', types: 'source,fact' },
+    fields: [
+      { key: 'query', label: '찾을 내용 (표현식 지원)', type: 'text' },
+      { key: 'k', label: '최대 개수', type: 'select', options: ['1', '3', '5', '10'] },
+      { key: 'types', label: '종류 — source(원문 조각) · fact(검증된 사실)', type: 'select', options: ['source,fact', 'fact', 'source'] },
+    ],
+    summary: (p) => `기억 검색 · 최대 ${p.k || 5}개`,
+    // 문턱을 못 넘으면 빈 결과 — 관련 없는 기억을 억지로 붙이지 않는다
+    run: async (i, p) => {
+      const r = await callIntegration('memoryRecall', { query: p.query, k: Number(p.k) || 5, types: String(p.types || '').split(',').map((t) => t.trim()).filter(Boolean) });
+      return { main: { ...(i.main || {}), memory: r } };
+    },
+  },
   approvalRequest: {
     title: '사람 승인 대기', icon: 'check', color: '#b5651d', category: '흐름 제어', backend: true,
     inputs: ['main'], outputs: ['approved', 'rejected', 'expired'],

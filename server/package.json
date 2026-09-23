@@ -8,6 +8,7 @@
     "dev": "node --watch index.js"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.3.0",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "msedge-tts": "^2.0.7",

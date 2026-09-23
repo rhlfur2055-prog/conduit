@@ -243,6 +243,27 @@ export const Approvals = {
   },
 };
 
+/* ---------- 장기 기억 (검증된 읽기 기억 · specs/001-verified-memory) ----------
+   원문 조각(source)과 검증된 사실(fact)만 들어온다. key(정규화 텍스트)가 같으면 다시 넣지 않는다. */
+export const Memory = {
+  all: () => readJSON('memory.json', []),
+  add(entries) {
+    const list = Memory.all();
+    const keys = new Set(list.map((m) => m.key));
+    const added = [];
+    for (const e of entries) {
+      if (!e?.key || keys.has(e.key)) continue;
+      const rec = { id: uid('m'), createdAt: new Date().toISOString(), ...e };
+      keys.add(e.key);
+      list.push(rec);
+      added.push(rec);
+    }
+    if (added.length) writeJSON('memory.json', list);
+    return added;
+  },
+  reset() { writeJSON('memory.json', []); },
+};
+
 /* ---------- 읽기 기억 (socraticRead 가 실수에서 배운 것) ----------
    모델 가중치는 바꿀 수 없으니, 확인된 실수를 모아 다음 읽기의 프롬프트에 넣는다.
    - confusions : OCR 이 잘못 읽고 대조 단계에서 바로잡힌 글자 쌍 ("라→나": 횟수)

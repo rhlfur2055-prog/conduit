@@ -33,7 +33,9 @@ export async function callLLM({ system, prompt, model, messages, maxTokens = 102
 
   const msgs = messages || [{ role: 'user', content: prompt || '' }];
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    // ANTHROPIC_BASE_URL — 프록시·게이트웨이·테스트용 가짜 서버 (Anthropic SDK 와 같은 이름)
+    const base = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/+$/, '');
+    const res = await fetch(`${base}/v1/messages`, {
       method: 'POST',
       headers: {
         'x-api-key': key,

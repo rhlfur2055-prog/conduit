@@ -334,7 +334,7 @@ const linesBlock = (lines) => lines.map((l) => `${l.id}: ${l.text}`).join('\n');
  * @param {string} [p.docId]   기억에 남길 문서 ID (없으면 내용 해시)
  * @param {object} [p._deps]   테스트용 주입 { llm, ocr, memory, recall, remember }
  */
-export async function socraticRead({ image, text, lang = 'kor+eng', engine = 'auto', focus = '', rounds = 2, learn = true, memory: useMemory = false, docId, title = '', model, _deps = {} } = {}) {
+export async function socraticRead({ image, text, lang = 'kor+eng', engine = 'auto', focus = '', rounds = 2, learn = true, memory: useMemory = false, docId, title = '', model, ownerId = 'owner', _deps = {} } = {}) {
   const llm = _deps.llm || callLLM;
   const ocr = _deps.ocr || ((a) => readText({ ...a, engine }));
   const memory = _deps.memory || ReadingMemory;
@@ -404,7 +404,7 @@ export async function socraticRead({ image, text, lang = 'kor+eng', engine = 'au
   let recallNote;
   if (useMemory) {
     const query = [focus, lines.map((l) => l.text).join(' ')].filter(Boolean).join(' ').slice(0, 600);
-    const rc = await recallFn({ query, excludeDocId: doc });
+    const rc = await recallFn({ query, excludeDocId: doc, ownerId });
     recallNote = rc.note;
     memLines = (rc.results || []).map((m, i) => ({ id: `M${i + 1}`, text: m.text, memoryId: m.id, docId: m.docId, source: m.source, score: m.score }));
     trace.push({ step: 'recall', found: memLines.length, embedded: rc.embedded });
@@ -502,6 +502,7 @@ export async function socraticRead({ image, text, lang = 'kor+eng', engine = 'au
   let stored = null;
   if (useMemory) {
     stored = await rememberFn({
+      ownerId,
       docId: doc,
       units: lines.filter((l) => l.id.startsWith('L')),
       source: { title, ocrEngine: ocrResult?.engine ?? (image ? null : 'text'), ocrConfidence: ocrResult?.confidence ?? null },

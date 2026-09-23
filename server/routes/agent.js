@@ -1,11 +1,12 @@
 // 목표 · 하트비트 (specs/004-goals-heartbeat) — 목표 관리, 하트비트 한 번 돌리기, 승인 대기 제안 결정
 import { Router } from 'express';
-import { Goals, Heartbeats, PendingActions, Settings } from '../store.js';
+import { Goals, Heartbeats, PendingActions, Settings, People } from '../store.js';
 import { runHeartbeat, decidePending } from '../heartbeat.js';
 import { quickstart, status, activity, saveClaudeKey, saveTelegramToken, applyHeartbeatSetting } from '../quickstart.js';
 import { setMode, allowChat, removeChat, startTelegram } from '../telegramChannel.js';
 import { listTemplates, createFromTemplate } from '../templates.js';
-import { handleAssistant, confirmAssistant } from '../assistant.js';
+import { handleAssistant, confirmAssistant, parseTime } from '../assistant.js';
+import { normLang, LANGS } from '../lang.js';
 
 export const agent = Router();
 
@@ -56,7 +57,7 @@ agent.put('/agent/telegram', (req, res) => {
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
 });
-agent.post('/agent/telegram/allow', (req, res) => res.json({ ok: true, settings: allowChat(req.body?.chatId) }));
+agent.post('/agent/telegram/allow', (req, res) => res.json({ ok: true, settings: allowChat(req.body?.chatId, { asOwner: req.body?.asOwner === true ? true : req.body?.asOwner === false ? false : undefined }) }));
 agent.post('/agent/telegram/remove', (req, res) => res.json({ ok: true, settings: removeChat(req.body?.chatId) }));
 agent.put('/agent/heartbeat', (req, res) => {
   const min = Math.max(0, Math.min(60, Number(req.body?.everyMin) || 0));
@@ -65,17 +66,40 @@ agent.put('/agent/heartbeat', (req, res) => {
 });
 
 /* ---------- 개인 비서 (specs/006) — 골라서 쓰기 · 말로 시키기 · 알림 ---------- */
-agent.get('/templates', (_req, res) => res.json(listTemplates()));
+// 화면은 PC 주인이 쓴다 — 템플릿·비서는 주인 것으로, 언어는 화면에서 고른 것(없으면 주인 설정)
+const webLang = (req) => normLang(req.query?.lang || req.body?.lang || People.owner().lang);
+agent.get('/templates', (req, res) => res.json(listTemplates(webLang(req), 'owner')));
 agent.post('/templates/:id', (req, res) => {
-  const r = createFromTemplate(req.params.id, req.body?.params || {});
+  const r = createFromTemplate(req.params.id, req.body?.params || {}, { ownerId: 'owner' });
   res.status(r.ok ? 200 : 400).json(r);
 });
 agent.post('/assistant', async (req, res) => {
   const text = String(req.body?.text || '').slice(0, 1000);
   if (!text.trim()) return res.status(400).json({ error: '말이 비어 있어요' });
-  res.json(await handleAssistant({ text, channel: 'web' }));
+  res.json(await handleAssistant({ text, channel: 'web', ownerId: 'owner', lang: webLang(req) }));
 });
-agent.post('/assistant/confirm/:id', async (req, res) => res.json(await confirmAssistant(req.params.id, !!req.body?.yes)));
+agent.post('/assistant/confirm/:id', async (req, res) => res.json(await confirmAssistant(req.params.id, !!req.body?.yes, { ownerId: 'owner' })));
+
+/* ---------- 사람 (specs/007) — 사람마다 따로 · 언어 · 일어나는 시각 · 관심사 ---------- */
+agent.get('/people', (_req, res) => {
+  People.owner();
+  res.json(People.all().map(({ id, role, name, lang, wake, interests, chatId, onboarding }) => ({ id, role, name, lang, wake, interests, chatId, onboarding })));
+});
+agent.put('/people/:id', (req, res) => {
+  const cur = req.params.id === 'owner' ? People.owner() : People.get(req.params.id);
+  if (!cur) return res.status(404).json({ ok: false, error: '없는 사람이에요' });
+  const b = req.body || {};
+  const patch = { id: cur.id };
+  if (b.name !== undefined) patch.name = String(b.name).slice(0, 40);
+  if (b.lang !== undefined) { if (!LANGS.includes(b.lang)) return res.status(400).json({ ok: false, error: 'lang: ko · en' }); patch.lang = b.lang; }
+  if (b.wake !== undefined) {
+    const w = b.wake ? parseTime(String(b.wake)) : null;
+    if (b.wake && !w) return res.status(400).json({ ok: false, error: '일어나는 시각: 07:00 처럼' });
+    patch.wake = w;
+  }
+  if (b.interests !== undefined) patch.interests = (Array.isArray(b.interests) ? b.interests : String(b.interests).split(',')).map((w) => String(w).trim().slice(0, 30)).filter(Boolean).slice(0, 10);
+  res.json({ ok: true, person: People.save(patch) });
+});
 agent.put('/agent/notify', (req, res) => {
   const v = ['errors', 'all', 'off'].includes(req.body?.notify) ? req.body.notify : 'errors';
   Settings.set('agent', { notify: v });

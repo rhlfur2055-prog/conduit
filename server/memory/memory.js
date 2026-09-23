@@ -16,7 +16,9 @@ import { DEFAULT_RECALL, scoreAll, select } from './retrieve.js';
 import { isInstruction, stripInstructions } from '../guard.js';
 
 const norm = (s) => String(s ?? '').normalize('NFC').replace(/\s+/g, ' ').trim();
-const keyOf = (type, text) => crypto.createHash('sha1').update(`${type}:${norm(text).toLowerCase()}`).digest('hex').slice(0, 16);
+// 사람마다 따로 (specs/007) — 같은 글이라도 사람이 다르면 따로 저장한다. 주인 것은 예전 키 그대로
+const keyOf = (type, text, ownerId = 'owner') => crypto.createHash('sha1').update(`${ownerId === 'owner' ? '' : `${ownerId}|`}${type}:${norm(text).toLowerCase()}`).digest('hex').slice(0, 16);
+export const ownerOf = (e) => e?.ownerId || 'owner';
 
 async function resolveEmbed(deps) {
   if ('embed' in deps) return deps.embed;             // 테스트: 가짜 임베더 또는 null(=없음)
@@ -31,8 +33,9 @@ async function resolveEmbed(deps) {
  * @param {string} [p.kind]             청킹 종류 강제 (없으면 판별)
  * @param {{text, quote, lines, verified}[]} [p.facts]  검증된 사실
  * @param {object} [p.source]           출처 (title · ocrEngine · ocrConfidence …)
+ * @param {string} [p.ownerId]          누구의 기억인가 (기본 PC 주인 'owner')
  */
-export async function remember({ docId, units, text, kind, facts = [], source = {}, _deps = {} } = {}) {
+export async function remember({ docId, units, text, kind, facts = [], source = {}, ownerId = 'owner', _deps = {} } = {}) {
   const store = _deps.store || Memory;
   const embed = await resolveEmbed(_deps);
   const readAt = new Date().toISOString();
@@ -42,9 +45,10 @@ export async function remember({ docId, units, text, kind, facts = [], source = 
   const quarantined = [];
   const cleanUnits = units?.map((u) => { const s = stripInstructions(u.text); quarantined.push(...s.removed); return { ...u, text: s.clean }; }).filter((u) => u.text.trim());
   const cleanText = text === undefined ? undefined : (() => { const s = stripInstructions(text); quarantined.push(...s.removed); return s.clean; })();
+  const own = ownerId === 'owner' ? {} : { ownerId };
   const chunks = await chunk({ units: cleanUnits, text: cleanText, kind, embed: embed || undefined });
   const entries = chunks.map((c) => ({
-    type: 'source', kind: c.kind, text: c.text, lines: c.lines, docId, source: src, key: keyOf('source', c.text),
+    type: 'source', kind: c.kind, text: c.text, lines: c.lines, docId, source: src, key: keyOf('source', c.text, ownerId), ...own,
   }));
 
   const rejected = [];
@@ -52,7 +56,7 @@ export async function remember({ docId, units, text, kind, facts = [], source = 
     const quotes = [].concat(f.quote ?? []).map(norm).filter(Boolean);
     if (f.verified !== true || !quotes.length || !norm(f.text)) { rejected.push({ text: f.text, reason: f.verified !== true ? '검증되지 않음' : '인용 없음' }); continue; }
     if (isInstruction(f.text) || quotes.some(isInstruction)) { rejected.push({ text: f.text, reason: '숨은 지시' }); continue; }
-    entries.push({ type: 'fact', kind: 'fact', text: norm(f.text), quote: quotes, lines: f.lines || [], docId, source: src, key: keyOf('fact', f.text) });
+    entries.push({ type: 'fact', kind: 'fact', text: norm(f.text), quote: quotes, lines: f.lines || [], docId, source: src, key: keyOf('fact', f.text, ownerId), ...own });
   }
 
   if (embed && entries.length) {
@@ -74,11 +78,12 @@ export async function remember({ docId, units, text, kind, facts = [], source = 
 /**
  * @returns {{ results: {id,type,kind,text,quote?,docId,lines,source,score,cos,overlap,rerank?}[], mode:'rerank'|'embedding'|'overlap', embedded:boolean, note?:string }}
  */
-export async function recall({ query, k, types, cfg = {}, excludeDocId, _deps = {} } = {}) {
+export async function recall({ query, k, types, cfg = {}, excludeDocId, ownerId = 'owner', _deps = {} } = {}) {
   const store = _deps.store || Memory;
   const q = norm(query);
   if (!q) return { results: [], mode: null, embedded: false };
-  let entries = store.all();
+  // 그 사람 것만 찾는다 — 다른 사람 기억은 후보에도 오르지 않는다 (specs/007 SC-002)
+  let entries = store.all().filter((e) => ownerOf(e) === ownerId);
   if (types?.length) entries = entries.filter((e) => types.includes(e.type));
   if (excludeDocId) entries = entries.filter((e) => e.docId !== excludeDocId);
   if (!entries.length) return { results: [], mode: null, embedded: false };

@@ -197,18 +197,29 @@ export const NODE_TYPES = {
       { key: 'field', label: '목록 필드 경로 (예: items)', type: 'text' },
       { key: 'header', label: '첫 줄 (선택)', type: 'text' },
       { key: 'line', label: '항목마다 한 줄 — {필드경로} 로 값 넣기 (예: • {topic} — {headlines.0.title})', type: 'text' },
+      { key: 'prefer', label: '이 낱말이 든 항목만 먼저 (쉼표, 선택)', type: 'text' },
+      { key: 'max', label: '최대 줄 수 (0 = 전부)', type: 'text' },
+      { key: 'noMatch', label: '맞는 항목이 없을 때 덧붙일 말 (선택)', type: 'text' },
       { key: 'target', label: '결과 저장 필드', type: 'text' },
     ],
     summary: (p) => `${p.field} → 글`,
     // LLM 없이 목록을 문장으로 — 들어온 값만 쓰므로 지어낼 자리가 없다. {…} 는 표현식({{ }})과 겹치지 않게 따로 쓴다
     run: async (i, p) => {
       const list = getPath(i.main, p.field);
-      const arr = Array.isArray(list) ? list : [];
+      let arr = Array.isArray(list) ? list : [];
+      let note = '';
+      // 관심사 먼저 (specs/007) — 쉼표 낱말이 항목 어딘가에 있으면 그것만. 하나도 없으면 앞에서부터 + 안내
+      const prefer = String(p.prefer || '').split(',').map((w) => w.trim().toLowerCase()).filter(Boolean);
+      if (prefer.length) {
+        const hit = arr.filter((it) => prefer.some((w) => JSON.stringify(it ?? '').toLowerCase().includes(w)));
+        if (hit.length) arr = hit; else note = p.noMatch || '';
+      }
+      if (Number(p.max) > 0) arr = arr.slice(0, Number(p.max));
       const lines = arr.map((it) => String(p.line || '').replace(/\{([^{}]+)\}/g, (_m, path) => {
         const v = getPath(it, path.trim());
         return v === undefined || v === null ? '' : String(v);
       }).trim()).filter(Boolean);
-      const text = [p.header, ...(lines.length ? lines : ['(항목 없음)'])].filter(Boolean).join('\n');
+      const text = [p.header, ...(lines.length ? lines : ['(항목 없음)']), note].filter(Boolean).join('\n');
       return { main: { ...(i.main || {}), [p.target || 'text']: text } };
     },
   },
@@ -223,7 +234,7 @@ export const NODE_TYPES = {
     summary: (p) => `최근 ${p.days}일 기억`,
     // 소크라테스식 읽기에서 인용 검증을 통과해 저장된 사실만 원문 그대로 모은다 (LLM 없음)
     run: async (i, p) => {
-      const r = await callIntegration('memoryDigest', { days: Number(p.days) || 7 });
+      const r = await callIntegration('memoryDigest', { days: Number(p.days) || 7, ownerId: p.owner || i.main?.ownerId || 'owner', lang: p.lang });
       return { main: { ...(i.main || {}), [p.target || 'text']: r.text, digest: r } };
     },
   },
@@ -535,6 +546,7 @@ export const NODE_TYPES = {
       const r = await callIntegration('socraticRead', {
         image: p.image, text: p.text, focus: p.focus, engine: p.engine || 'auto', lang: p.lang,
         rounds: Number(p.rounds) || 2, learn: p.learn !== 'false', memory: p.memory !== 'false', title: p.title, model: p.model,
+        ownerId: i.main?.ownerId || 'owner', // 누구의 기억인가 — 받은 파일은 보낸 사람 것 (코드가 정한다, specs/007)
       });
       return { main: { ...(i.main || {}), reading: r } };
     },
@@ -560,7 +572,7 @@ export const NODE_TYPES = {
     summary: (p) => `기억 검색 · 최대 ${p.k || 5}개`,
     // 문턱을 못 넘으면 빈 결과 — 관련 없는 기억을 억지로 붙이지 않는다
     run: async (i, p) => {
-      const r = await callIntegration('memoryRecall', { query: p.query, k: Number(p.k) || 5, types: String(p.types || '').split(',').map((t) => t.trim()).filter(Boolean) });
+      const r = await callIntegration('memoryRecall', { query: p.query, ownerId: i.main?.ownerId || 'owner', k: Number(p.k) || 5, types: String(p.types || '').split(',').map((t) => t.trim()).filter(Boolean) });
       return { main: { ...(i.main || {}), memory: r } };
     },
   },

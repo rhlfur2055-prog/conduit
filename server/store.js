@@ -90,6 +90,8 @@ export const Workflows = {
       nodes: wf.nodes ?? existing?.nodes ?? [],
       edges: wf.edges ?? existing?.edges ?? [],
       active: wf.active ?? existing?.active ?? false,
+      // 누가 만들었나 (specs/007) — 없으면 PC 주인 것
+      ...((wf.ownerId ?? existing?.ownerId) ? { ownerId: wf.ownerId ?? existing.ownerId } : {}),
       createdAt: existing?.createdAt || now,
       updatedAt: now,
     };
@@ -241,6 +243,27 @@ export const Approvals = {
     writeJSON('approvals.json', list);
     return rec;
   },
+};
+
+/* ---------- 사람 (specs/007) — 텔레그램 채팅 하나 = 한 사람, PC 화면 = owner ---------- */
+export const People = {
+  all: () => readJSON('people.json', []),
+  get: (id) => People.all().find((p) => p.id === id) || null,
+  byChat: (chatId) => (chatId === undefined || chatId === null ? null : People.all().find((p) => p.chatId === String(chatId)) || null),
+  save(p) {
+    const list = People.all();
+    const id = p.id || (p.chatId ? `p_${p.chatId}` : uid('p'));
+    const prev = list.find((x) => x.id === id);
+    const rec = {
+      id, role: id === 'owner' ? 'owner' : 'member', lang: 'ko', name: '', wake: null, interests: [], chatId: null, onboarding: null,
+      ...prev, ...p, id, updatedAt: new Date().toISOString(), createdAt: prev?.createdAt || new Date().toISOString(),
+    };
+    if (rec.chatId !== null && rec.chatId !== undefined) rec.chatId = String(rec.chatId);
+    writeJSON('people.json', prev ? list.map((x) => (x.id === id ? rec : x)) : [...list, rec]);
+    return rec;
+  },
+  /** PC 주인 — 없으면 만든다 */
+  owner: () => People.get('owner') || People.save({ id: 'owner', role: 'owner', lang: 'ko', name: '' }),
 };
 
 /* ---------- 변경 감지 (changeDetect 노드) — 키별 지난 값의 해시 ---------- */

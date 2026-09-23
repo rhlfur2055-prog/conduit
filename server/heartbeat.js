@@ -11,7 +11,7 @@
 // ============================================================
 import fs from 'node:fs';
 import path from 'node:path';
-import { Goals, Heartbeats, InboxSeen, PendingActions, Workflows, Executions } from './store.js';
+import { Goals, Heartbeats, InboxSeen, PendingActions, Workflows, Executions, People } from './store.js';
 import { callLLM } from './llm.js';
 import { parseJson } from './vision.js';
 import cron from 'node-cron';
@@ -48,7 +48,8 @@ export function senseInbox(goal, seen = InboxSeen) {
       let replyTo = null;
       try {
         const meta = JSON.parse(fs.readFileSync(`${p}.meta.json`, 'utf8'));
-        if (meta?.chatId) replyTo = { chatId: String(meta.chatId), messageId: meta.messageId ?? null, source: meta.source ?? null };
+        // 누가 보냈나도 코드가 정한다 — 사람 기록(채팅 → 사람)에서만 찾는다 (specs/007)
+        if (meta?.chatId) replyTo = { chatId: String(meta.chatId), messageId: meta.messageId ?? null, source: meta.source ?? null, ownerId: People.byChat(meta.chatId)?.id || null };
       } catch { /* 폴더에 직접 넣은 파일 */ }
       return { path: p, name: n, size: st.size, key: `${goal.id}|${p}|${st.size}|${Math.round(st.mtimeMs)}`, replyTo };
     })
@@ -150,7 +151,7 @@ export function validate(p, ctx, state, limits = HEARTBEAT_LIMITS) {
   if (!g.goal.workflows.includes(w.wf.id)) return { verdict: 'rejected', reason: `목표 ${g.ref} 에 허용되지 않은 워크플로 ${w.ref}`, g };
 
   // replyTo 는 LLM 이 정할 수 없다 (다른 채팅으로 보내게 하지 못하도록) — 제안에 있으면 버린다
-  const { replyTo: _ignored, ...input } = p.input && typeof p.input === 'object' && !Array.isArray(p.input) ? p.input : {};
+  const { replyTo: _ignored, ownerId: _ignoredOwner, ...input } = p.input && typeof p.input === 'object' && !Array.isArray(p.input) ? p.input : {};
   if (JSON.stringify(input).length > 4000) return { verdict: 'rejected', reason: '입력이 너무 크다', g };
   const mine = ctx.inputs.filter((i) => i.goalRef === g.ref);
   if (p.inputRef && !mine.some((i) => i.ref === p.inputRef)) return { verdict: 'rejected', reason: `목표 ${g.ref} 의 입력이 아닌 ${p.inputRef}`, g };
@@ -227,7 +228,9 @@ export async function runHeartbeat({ now = Date.now(), limits = HEARTBEAT_LIMITS
       if (v.item) { state.handled.add(v.item.key); seen.mark(v.item.key, { status: 'run', goalId: row.goalId }); }
       const replyTo = v.item?.replyTo || null;
       try {
-        const res = await exec(v.w.wf, { seed: triggerSeed(v.w.wf, replyTo ? { ...v.input, replyTo } : v.input), trigger: 'agent' });
+        // 기억은 보낸 사람 것으로 — 보낸 사람을 모르면(폴더에 직접 넣은 파일) PC 주인 것
+        const seed = replyTo ? { ...v.input, replyTo, ownerId: replyTo.ownerId || 'owner' } : v.input;
+        const res = await exec(v.w.wf, { seed: triggerSeed(v.w.wf, seed), trigger: 'agent' });
         row.execution = { id: res.execution.id, status: res.execution.status };
         // 휴대폰에서 온 입력이면 결과를 그 채팅으로 답장 (모드가 보내기를 허용할 때만 — telegramChannel 이 판단)
         if (replyTo) {

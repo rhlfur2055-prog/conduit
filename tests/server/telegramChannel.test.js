@@ -45,9 +45,19 @@ describe('받기 — 휴대폰 → PC', () => {
     expect(woke).toBe(1);
   });
 
-  it('글도 받는다 (.txt 로 저장)', async () => {
-    const r = await ch.handleMessage(text('결제일은 매월 14일입니다.'), { call, allowed: true, chatId: '100' });
+  it('"읽어줘 …" 로 보낸 글은 읽을 글로 받는다 (.txt, 앞말은 뺀다)', async () => {
+    const r = await ch.handleMessage(text('읽어줘 결제일은 매월 14일입니다.'), { call, allowed: true, chatId: '100' });
     expect(fs.readFileSync(r.saved, 'utf8')).toBe('결제일은 매월 14일입니다.');
+  });
+
+  it('짧은 글은 비서에게 하는 말 — 알림을 만들지 물어보고 [만들기] 버튼을 단다 (바로 만들지 않는다)', async () => {
+    const r = await ch.handleMessage(text('매일 8시 30분에 약 먹으라고 알려줘'), { call, allowed: true, chatId: '100' });
+    expect(r).toMatchObject({ assistant: 'template', understood: 'rule' });
+    const msg = sent.filter((x) => x.method === 'sendMessage').pop().body;
+    expect(msg.text).toMatch(/매일 오전 8시 30분에 "⏰ 약 먹기" 알림 — 만들까요\?/);
+    expect(msg.reply_markup.inline_keyboard[0].map((b) => b.text)).toEqual(['✅ 만들기', '취소']);
+    expect(Workflows.all().filter((w) => /할 일 알림/.test(w.name))).toHaveLength(0);
+    expect(fs.readdirSync(inbox)).toEqual([]);
   });
 
   it('SC-003 허용 안 된 채팅은 저장 0건 · 연결 요청으로 기록 · 안내는 한 번만', async () => {
@@ -75,7 +85,7 @@ describe('SC-002 모드 — 사용자가 고른다', () => {
     const got = {};
     for (const mode of ['both', 'inbound', 'outbound', 'off']) {
       ch.setMode(mode);
-      const r = await ch.handleMessage(text(`모드 ${mode}`), { call, allowed: true, chatId: '100' });
+      const r = await ch.handleMessage(text(`읽어줘 모드 ${mode}`), { call, allowed: true, chatId: '100' });
       got[mode] = r.saved ? 'saved' : r.ignored;
     }
     expect(got).toEqual({ both: 'saved', inbound: 'saved', outbound: 'mode', off: 'mode' });

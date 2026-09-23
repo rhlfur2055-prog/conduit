@@ -90,10 +90,13 @@ export const NODE_TYPES = {
   scheduleTrigger: {
     title: '스케줄 트리거', icon: 'clock', color: '#9a7b4f', category: '트리거', backend: true,
     inputs: [], outputs: ['main'],
-    defaults: { interval: '매일 09:00' },
-    fields: [{ key: 'interval', label: '실행 주기', type: 'select', options: ['매분', '10분마다', '매시', '매일 09:00', '매주 월요일'] }],
-    summary: (p) => `주기: ${p.interval}`,
-    run: async (_i, p, ctx) => ({ main: { triggeredAt: ctx.$now, interval: p.interval } }),
+    defaults: { interval: '매일 09:00', cron: '' },
+    fields: [
+      { key: 'interval', label: '실행 주기', type: 'select', options: ['매분', '10분마다', '매시', '매일 09:00', '매주 월요일', '직접 지정'] },
+      { key: 'cron', label: '직접 지정할 때 — 분 시 일 월 요일 (예: 30 8 * * * = 매일 8시 30분, 0 9 * * 1-5 = 평일 9시)', type: 'text' },
+    ],
+    summary: (p) => (p.interval === '직접 지정' ? `주기: ${p.cron || '(비어 있음)'}` : `주기: ${p.interval}`),
+    run: async (_i, p, ctx) => ({ main: { triggeredAt: ctx.$now, interval: p.interval === '직접 지정' ? p.cron : p.interval } }),
   },
   webhookTrigger: {
     title: 'Webhook 트리거', icon: 'globe', color: '#9a7b4f', category: '트리거', backend: true,
@@ -184,6 +187,60 @@ export const NODE_TYPES = {
         : p.format === 'Unix(ms)' ? d.getTime()
         : d.toISOString();
       return { main: { ...(i.main || {}), [p.field]: v } };
+    },
+  },
+  listText: {
+    title: '목록을 글로', icon: 'list', color: '#4e8a7c', category: '동작',
+    inputs: ['main'], outputs: ['main'],
+    defaults: { field: 'items', header: '', line: '• {title}', target: 'text' },
+    fields: [
+      { key: 'field', label: '목록 필드 경로 (예: items)', type: 'text' },
+      { key: 'header', label: '첫 줄 (선택)', type: 'text' },
+      { key: 'line', label: '항목마다 한 줄 — {필드경로} 로 값 넣기 (예: • {topic} — {headlines.0.title})', type: 'text' },
+      { key: 'target', label: '결과 저장 필드', type: 'text' },
+    ],
+    summary: (p) => `${p.field} → 글`,
+    // LLM 없이 목록을 문장으로 — 들어온 값만 쓰므로 지어낼 자리가 없다. {…} 는 표현식({{ }})과 겹치지 않게 따로 쓴다
+    run: async (i, p) => {
+      const list = getPath(i.main, p.field);
+      const arr = Array.isArray(list) ? list : [];
+      const lines = arr.map((it) => String(p.line || '').replace(/\{([^{}]+)\}/g, (_m, path) => {
+        const v = getPath(it, path.trim());
+        return v === undefined || v === null ? '' : String(v);
+      }).trim()).filter(Boolean);
+      const text = [p.header, ...(lines.length ? lines : ['(항목 없음)'])].filter(Boolean).join('\n');
+      return { main: { ...(i.main || {}), [p.target || 'text']: text } };
+    },
+  },
+  memoryDigest: {
+    title: '기억 모아 보기 (검증된 사실)', icon: 'list', color: '#7c5cbf', category: 'AI', backend: true,
+    inputs: ['main'], outputs: ['main'],
+    defaults: { days: '7', target: 'text' },
+    fields: [
+      { key: 'days', label: '최근 며칠', type: 'select', options: ['1', '7', '30'] },
+      { key: 'target', label: '결과 저장 필드', type: 'text' },
+    ],
+    summary: (p) => `최근 ${p.days}일 기억`,
+    // 소크라테스식 읽기에서 인용 검증을 통과해 저장된 사실만 원문 그대로 모은다 (LLM 없음)
+    run: async (i, p) => {
+      const r = await callIntegration('memoryDigest', { days: Number(p.days) || 7 });
+      return { main: { ...(i.main || {}), [p.target || 'text']: r.text, digest: r } };
+    },
+  },
+  changeDetect: {
+    title: '변경 감지 (지난번과 다르면)', icon: 'branch', color: '#b0813f', category: '흐름 제어', backend: true,
+    inputs: ['main'], outputs: ['changed', 'same'],
+    defaults: { key: 'page', field: 'data' },
+    fields: [
+      { key: 'key', label: '무엇을 지켜보나 (이름 — 같은 이름끼리 비교)', type: 'text' },
+      { key: 'field', label: '비교할 필드 경로 (예: data)', type: 'text' },
+    ],
+    summary: (p) => `${p.key} 이 바뀌면`,
+    // 지난 값의 해시를 서버에 저장한다. 처음 보는 값은 기준으로만 저장하고 same 으로 보낸다 (켜자마자 알림이 가지 않도록)
+    run: async (i, p) => {
+      const r = await callIntegration('changeDetect', { key: p.key, value: getPath(i.main, p.field) });
+      const item = { ...(i.main || {}), change: r };
+      return r.changed ? { changed: item, same: undefined } : { changed: undefined, same: item };
     },
   },
   hash: {

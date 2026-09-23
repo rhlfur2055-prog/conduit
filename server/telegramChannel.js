@@ -7,7 +7,7 @@
 // ============================================================
 import fs from 'node:fs';
 import path from 'node:path';
-import { Settings, Goals, Heartbeats } from './store.js';
+import { Settings, Goals, Heartbeats, Workflows } from './store.js';
 import * as tg from './telegram.js';
 
 export const MODES = Object.freeze({
@@ -100,7 +100,20 @@ export async function handleMessage(m, { call, allowed, chatId, command, onRecei
   if (command === 'start') { await say(`연결되어 있어요 ✅\n${statusText()}\n\n사진이나 글을 보내면 PC 가 읽어요. /mode 로 받기·보내기를 고를 수 있어요.`); return { ignored: 'command' }; }
   if (/^\/mode\b/.test(text)) { await call('sendMessage', { chat_id: chatId, text: '어떻게 주고받을까요?', reply_markup: modeKeyboard() }); return { ignored: 'command' }; }
   if (/^\/status\b/.test(text)) { await say(statusText()); return { ignored: 'command' }; }
-  if (text.startsWith('/')) { await say('쓸 수 있는 명령: /mode · /status'); return { ignored: 'command' }; }
+  if (text.startsWith('/')) { await say('쓸 수 있는 명령: /mode · /status · 또는 그냥 말로 (예: "매일 8시에 약 먹으라고 알려줘")'); return { ignored: 'command' }; }
+
+  // 짧은 글은 비서에게 하는 말 — 긴 글(200자 이상)이나 "읽어줘 …" 는 읽을 글
+  const isCommand = text && !m.photo?.length && !m.document && text.length < 200 && !/^읽어\s*줘/.test(text);
+  if (isCommand) {
+    if (telegramMode() === 'off') { await say('지금은 텔레그램이 꺼져 있어요. /mode 로 켤 수 있어요.'); return { ignored: 'mode' }; }
+    const { handleAssistant } = await import('./assistant.js');
+    const r = await handleAssistant({ text, channel: 'telegram' });
+    await call('sendMessage', {
+      chat_id: chatId, text: r.reply, reply_to_message_id: m.message_id,
+      ...(r.buttons ? { reply_markup: { inline_keyboard: [r.buttons.map((b) => ({ text: b.label, callback_data: b.value }))] } } : {}),
+    }).catch(() => {});
+    return { assistant: r.action, understood: r.understood };
+  }
 
   if (!canReceive()) { await say(`지금은 받지 않아요 (모드: ${MODES[telegramMode()].label}).\n/mode 로 바꿀 수 있어요.`); return { ignored: 'mode' }; }
   const goal = inboxGoal();
@@ -120,7 +133,7 @@ export async function handleMessage(m, { call, allowed, chatId, command, onRecei
       ({ buf } = await download(m.document.file_id, { call, fetchImpl, token }));
       ext = 'txt';
     } else if (text) {
-      buf = Buffer.from(text, 'utf8');
+      buf = Buffer.from(text.replace(/^읽어\s*줘[:\s]*/, ''), 'utf8');
       ext = 'txt';
     } else {
       await say('사진이나 글만 받을 수 있어요.');
@@ -145,6 +158,14 @@ export async function handleMessage(m, { call, allowed, chatId, command, onRecei
 
 /** 모드 버튼 (telegram.startPolling 의 onCallback) */
 export async function handleCallback(q, { call, allowed, chatId }) {
+  const a = /^as:([A-Za-z0-9_-]{1,40}):(yes|no)$/.exec(String(q.data || ''));
+  if (a) {
+    if (!allowed) return call('answerCallbackQuery', { callback_query_id: q.id, text: '연결되지 않은 채팅이에요' });
+    const { confirmAssistant } = await import('./assistant.js');
+    await call('answerCallbackQuery', { callback_query_id: q.id, text: a[2] === 'yes' ? '처리 중…' : '취소' }).catch(() => {});
+    const r = await confirmAssistant(a[1], a[2] === 'yes');
+    return call('editMessageText', { chat_id: chatId, message_id: q.message?.message_id, text: r.reply }).catch(() => {});
+  }
   const m = /^md:(both|inbound|outbound|off)$/.exec(String(q.data || ''));
   if (!m) return call('answerCallbackQuery', { callback_query_id: q.id });
   if (!allowed) return call('answerCallbackQuery', { callback_query_id: q.id, text: '연결되지 않은 채팅이에요' });
@@ -180,6 +201,27 @@ export async function sendResult(replyTo, execution, { send = tg.telegramSend } 
   if (!tg.tgChatIds().includes(String(replyTo.chatId))) return { skipped: '허용되지 않은 채팅' };
   return send({ chatId: replyTo.chatId, text: formatResult(execution) });
 }
+
+/* ---------- 자동화 결과 알림 (specs/006 FR-005) ----------
+   예약·웹훅·자동 확인으로 돈 자동화가 실패하면 휴대폰으로 알린다. 설정: errors(기본) · all · off.
+   스스로 텔레그램으로 보내는 자동화(템플릿)와 휴대폰에서 온 입력(답장이 따로 감)은 성공 알림을 겹쳐 보내지 않는다. */
+export async function notifyExecution({ execution, workflow, trigger }, { send = tg.telegramSend } = {}) {
+  const pref = Settings.get('agent').notify || 'errors';
+  if (pref === 'off' || !canSend() || !tg.tgToken() || !tg.tgDefaultChat()) return { skipped: true };
+  if (!['schedule', 'webhook', 'agent'].includes(trigger)) return { skipped: true };
+  const selfSends = (workflow?.nodes || []).some((n) => n.data?.kind === 'telegram');
+  if (execution.status === 'error') {
+    const firstErr = Object.entries(execution.statuses || {}).find(([, s]) => s?.status === 'error');
+    return send({ chatId: tg.tgDefaultChat(), text: `⚠️ 자동화 실패: ${workflow?.name || execution.workflowName}
+${firstErr ? `${firstErr[0]}: ${String(firstErr[1].error || '').slice(0, 300)}` : ''}
+PC 의 실행 기록에서 자세히 볼 수 있어요.` });
+  }
+  if (pref === 'all' && execution.status === 'success' && !selfSends && trigger !== 'agent') {
+    return send({ chatId: tg.tgDefaultChat(), text: `✅ ${workflow?.name || execution.workflowName} 완료` });
+  }
+  return { skipped: true };
+}
+export const notifyWorkflowsCount = () => Workflows.all().length;
 
 /* ---------- 폴링 시작 (승인 버튼 + 받기 + 모드) ---------- */
 let poller = null;

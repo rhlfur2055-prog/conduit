@@ -231,7 +231,7 @@ try {
   /* 13. 받기만 모드 — 받지만 답장은 안 함 */
   await api('PUT', '/api/agent/telegram', { mode: 'inbound' });
   const before = phone.inbox(PHONE).filter((m) => /📖|건너뛰었어요|처리했어요/.test(m.text || '')).length;
-  phone.send(PHONE, { text: '회의는 오후 3시에 2층 회의실에서 열립니다.' });
+  phone.send(PHONE, { text: '읽어줘 회의는 오후 3시에 2층 회의실에서 열립니다.' });
   await until(() => lastReply(PHONE, /보내기가 꺼져 있어/), 15000);
   await sleep(4000);
   const after = phone.inbox(PHONE).filter((m) => /📖|건너뛰었어요|처리했어요/.test(m.text || '')).length;
@@ -243,6 +243,33 @@ try {
   /* 14. /status */
   phone.send(PHONE, { text: '/status' });
   check('텔레그램', '휴대폰 /status → 현재 모드 안내', !!(await until(() => lastReply(PHONE, /모드: 받기만/), 10000)));
+
+  /* 14-1. 개인 비서 — 휴대폰에서 말로 시키기 (specs/006 SC-005) */
+  await api('PUT', '/api/agent/telegram', { mode: 'both' });
+  const wfBefore = (await api('GET', '/api/workflows')).json.length;
+  phone.send(PHONE, { text: '매일 8시 30분에 약 먹으라고 알려줘' });
+  const ask = await until(() => phone.inbox(PHONE).find((m) => /만들까요\?/.test(m.text || '') && m.reply_markup), 15000);
+  const yesBtn = ask?.reply_markup.inline_keyboard.flat().find((b) => /:yes$/.test(b.callback_data));
+  check('비서', '휴대폰 "매일 8시 30분에 약 먹으라고 알려줘" → 알아듣고 [만들기] 로 확인', !!yesBtn && /매일 오전 8시 30분에 "⏰ 약 먹기"/.test(ask.text), ask?.text);
+  check('보안', '[만들기] 를 누르기 전엔 자동화가 생기지 않음', (await api('GET', '/api/workflows')).json.length === wfBefore);
+  phone.press(PHONE, yesBtn?.callback_data, 1);
+  const made = await until(() => phone.inbox(PHONE).find((m) => m.edited && /만들었어요/.test(m.text || '')), 15000);
+  const wfs = (await api('GET', '/api/workflows')).json;
+  const reminderRow = wfs.find((w) => /할 일 알림/.test(w.name));
+  const reminder = reminderRow ? (await api('GET', `/api/workflows/${reminderRow.id}`)).json : null;   // 목록은 요약만 준다
+  check('비서', '[만들기] → 예약 자동화가 켜짐 (크론 30 8 * * *)', !!made && reminder?.active && (reminder.nodes || []).some((n) => n.data.params?.cron === '30 8 * * *'), reminder?.name);
+
+  phone.send(PHONE, { text: '전에 읽은 결제일 뭐였지?' });
+  const rec = await until(() => phone.inbox(PHONE).find((m) => /기억에서 (찾았어요|찾지 못했어요)/.test(m.text || '')), 30000);
+  check('비서', '휴대폰 "전에 읽은 결제일 뭐였지?" → 기억 원문으로 답함', /결제일은 매월 14일입니다/.test(rec?.text || ''), rec?.text.split('\n')[1]?.trim());
+
+  /* 14-2. 화면에서 — 말로 시키기 · 골라서 쓰기 */
+  const web = await api('POST', '/api/assistant', { text: 'https://example.com/notice 바뀌면 알려줘' });
+  check('비서', '화면 채팅 "…바뀌면 알려줘" → 페이지 감시 제안 + 확인 버튼', /1시간마다 확인해서 바뀌면 알림 — 만들까요/.test(web.json?.reply || '') && web.json.buttons?.length === 2);
+  const tpl = await api('POST', '/api/templates/morning-brief', { params: { time: '07:30', days: '평일' } });
+  check('비서', '골라서 쓰기: 아침 브리핑 템플릿 → 평일 오전 7시 30분 예약', tpl.status === 200 && tpl.json.when === '평일 오전 7시 30분', tpl.json?.name);
+  const badTpl = await api('POST', '/api/templates/page-watch', { params: { url: 'file:///C:/Windows/win.ini', every: '10분마다' } });
+  check('보안', '템플릿에 파일 주소(file://)는 거부', badTpl.status === 400);
 
   /* 15. 화면의 최근 활동 */
   const act = (await api('GET', '/api/agent/activity')).json;
@@ -257,7 +284,7 @@ try {
 
 /* ---------- 결과 ---------- */
 console.log('로컬 끝까지 점검 — 진짜 conduit 서버 · 가짜 텔레그램(휴대폰) · 가짜 Anthropic\n');
-for (const g of ['준비', '텔레그램', '보안', '오류']) {
+for (const g of ['준비', '텔레그램', '비서', '보안', '오류']) {
   const rows = checks.filter((c) => c.group === g);
   if (!rows.length) continue;
   console.log(`[${g}]`);

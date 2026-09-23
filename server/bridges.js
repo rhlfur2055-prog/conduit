@@ -28,6 +28,7 @@ import { plateRecognize } from './plateRecognize.js';
 import { socraticRead } from './socratic.js';
 import { readText } from './ocrEnsemble.js';
 import { recall as memoryRecall } from './memory/memory.js';
+import { changeDetect, memoryDigest } from './templates.js';
 
 export function installBridges() {
   globalThis.__conduitLLM = callLLM;
@@ -68,6 +69,8 @@ export function installBridges() {
     plateRecognize,
     socraticRead,
     memoryRecall,
+    changeDetect,
+    memoryDigest,
     mcp: async ({ credential, tool, args }) => {
       if (!tool) return mcpListTools(credential);
       let parsed = {};

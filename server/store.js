@@ -243,6 +243,13 @@ export const Approvals = {
   },
 };
 
+/* ---------- 변경 감지 (changeDetect 노드) — 키별 지난 값의 해시 ---------- */
+export const ChangeState = {
+  all: () => readJSON('change-state.json', {}),
+  get: (key) => ChangeState.all()[key] || null,
+  set(key, hash) { const m = ChangeState.all(); m[key] = { hash, at: new Date().toISOString() }; writeJSON('change-state.json', m); },
+};
+
 /* ---------- 설정 (화면에서 바꾸는 값 — 비밀값은 여기 두지 않고 Credentials 에 암호화) ---------- */
 export const Settings = {
   all: () => readJSON('settings.json', {}),

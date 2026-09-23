@@ -11,6 +11,122 @@ const MODE_HELP = {
   off: '텔레그램으로 아무것도 주고받지 않아요',
 };
 const EVERY = [[0, '끄기'], [1, '1분마다'], [5, '5분마다'], [15, '15분마다'], [60, '1시간마다']];
+const NOTIFY = [['errors', '실패만'], ['all', '모두'], ['off', '끄기']];
+const TABS = [['start', '시작하기'], ['gallery', '골라서 쓰기'], ['chat', '말로 시키기']];
+const EXAMPLES = ['매일 8시 30분에 약 먹으라고 알려줘', '평일 아침 8시에 브리핑 보내줘', '전에 읽은 결제일 뭐였지?', '템플릿 보여줘'];
+
+/* ---------- 골라서 쓰기 — 템플릿 카드 ---------- */
+function Gallery({ onDone }) {
+  const [list, setList] = useState([]);
+  const [open, setOpen] = useState(null);
+  const [vals, setVals] = useState({});
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api.listTemplates().then(setList).catch((e) => setMsg(`⚠️ ${e.message}`)); }, []);
+  const pick = (t) => {
+    setOpen(open?.id === t.id ? null : t);
+    setVals(Object.fromEntries(t.fields.map((f) => [f.key, f.default ?? ''])));
+    setMsg('');
+  };
+  const create = async () => {
+    setBusy(true);
+    try {
+      const r = await api.createTemplate(open.id, vals);
+      setMsg(`✅ 켰어요: ${r.name}${r.when ? ` — ${r.when}` : ''}`);
+      setOpen(null);
+      onDone?.();
+    } catch (e) {
+      setMsg(`⚠️ ${e.message.replace(/ \(\d+\).*$/, '')}`);
+    } finally { setBusy(false); }
+  };
+  return (
+    <div className="easy-gallery">
+      <p className="easy-sub">고르고 빈칸만 채우면 바로 켜져요. 결과는 텔레그램(보내기 모드)으로 와요.</p>
+      <div className="easy-cards">
+        {list.map((t) => (
+          <button key={t.id} className={`easy-card ${open?.id === t.id ? 'on' : ''}`} onClick={() => pick(t)}>
+            <span className="easy-card-icon">{t.icon}</span>
+            <span className="easy-card-title">{t.title}</span>
+            <span className="easy-card-desc">{t.desc}</span>
+          </button>
+        ))}
+      </div>
+      {open && (
+        <section className="easy-step">
+          <div className="easy-step-head"><span className="easy-step-title">{open.icon} {open.title}</span></div>
+          <div className="easy-form">
+            {open.fields.length === 0 && <p className="easy-sub">채울 것이 없어요.</p>}
+            {open.fields.map((f) => (
+              <label key={f.key} className="easy-field">
+                <span>{f.label}</span>
+                {f.type === 'select' ? (
+                  <select className="easy-input" value={vals[f.key]} onChange={(e) => setVals({ ...vals, [f.key]: e.target.value })}>
+                    {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                ) : (
+                  <input className="easy-input" type={f.type === 'time' ? 'time' : 'text'} value={vals[f.key]} onChange={(e) => setVals({ ...vals, [f.key]: e.target.value })} />
+                )}
+              </label>
+            ))}
+            <button className="easy-btn" disabled={busy} onClick={create}>{busy ? '켜는 중…' : '켜기'}</button>
+          </div>
+        </section>
+      )}
+      {msg && <p className="easy-msg">{msg}</p>}
+    </div>
+  );
+}
+
+/* ---------- 말로 시키기 — 채팅 ---------- */
+function Chat() {
+  const [log, setLog] = useState([{ who: 'bot', text: '무엇을 도와드릴까요? 아래 예시를 눌러 봐도 돼요.' }]);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const say = async (t) => {
+    const q = String(t ?? text).trim();
+    if (!q) return;
+    setText('');
+    setLog((l) => [...l, { who: 'me', text: q }]);
+    setBusy(true);
+    try {
+      const r = await api.assistant(q);
+      setLog((l) => [...l, { who: 'bot', text: r.reply, buttons: r.buttons, pendingId: r.pendingId }]);
+    } catch (e) {
+      setLog((l) => [...l, { who: 'bot', text: `⚠️ ${e.message}` }]);
+    } finally { setBusy(false); }
+  };
+  const confirm = async (i, value) => {
+    const [, id, yn] = value.split(':');
+    const r = await api.assistantConfirm(id, yn === 'yes').catch((e) => ({ reply: `⚠️ ${e.message}` }));
+    setLog((l) => l.map((m, k) => (k === i ? { ...m, buttons: null } : m)).concat({ who: 'bot', text: r.reply }));
+  };
+  return (
+    <div className="easy-chat">
+      <div className="easy-chat-log">
+        {log.map((m, i) => (
+          <div key={i} className={`easy-bubble ${m.who}`}>
+            <div className="easy-bubble-text">{m.text}</div>
+            {m.buttons && (
+              <div className="easy-row" style={{ marginTop: 6 }}>
+                {m.buttons.map((b) => <button key={b.value} className={b.value.endsWith(':yes') ? 'easy-btn small' : 'btn-ghost'} onClick={() => confirm(i, b.value)}>{b.label}</button>)}
+              </div>
+            )}
+          </div>
+        ))}
+        {busy && <div className="easy-bubble bot"><div className="easy-bubble-text">…</div></div>}
+      </div>
+      <div className="easy-row">
+        {EXAMPLES.map((x) => <button key={x} className="easy-pill" onClick={() => say(x)}>{x}</button>)}
+      </div>
+      <div className="easy-row">
+        <input className="easy-input" placeholder='예: "매일 8시 30분에 약 먹으라고 알려줘"' value={text}
+          onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) say(); }} />
+        <button className="easy-btn" disabled={busy || !text.trim()} onClick={() => say()}>보내기</button>
+      </div>
+      <p className="easy-sub">텔레그램에서 봇에게 같은 말을 보내도 돼요. 새 자동화는 [만들기] 를 눌러야 켜져요.</p>
+    </div>
+  );
+}
 
 function relTime(iso) {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -41,6 +157,7 @@ export default function EasyStart({ open, onClose }) {
   const [tgToken, setTgToken] = useState('');
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState({});
+  const [tab, setTab] = useState('start');
 
   const refresh = useCallback(() => {
     api.agentStatus().then(setSt).catch((e) => setMsg((m) => ({ ...m, top: e.message })));
@@ -87,10 +204,15 @@ export default function EasyStart({ open, onClose }) {
         </div>
 
         <div className="modal-body easy-body">
-          {msg.top && <div className="easy-warn">{msg.top}</div>}
-          {!st && !msg.top && <div className="insp-note">불러오는 중…</div>}
+          <div className="easy-tabs">
+            {TABS.map(([k, label]) => <button key={k} className={`easy-tab ${tab === k ? 'on' : ''}`} onClick={() => setTab(k)}>{label}</button>)}
+          </div>
+          {tab === 'gallery' && <Gallery onDone={refresh} />}
+          {tab === 'chat' && <Chat />}
+          {tab === 'start' && msg.top && <div className="easy-warn">{msg.top}</div>}
+          {tab === 'start' && !st && !msg.top && <div className="insp-note">불러오는 중…</div>}
 
-          {st && (
+          {tab === 'start' && st && (
             <>
               <Step n={1} done={ready} title="준비하기">
                 <p>버튼을 누르면 읽기에 필요한 것들(받은편지함 폴더 · 읽는 순서 · 목표)을 알아서 만들어요.</p>
@@ -196,6 +318,12 @@ export default function EasyStart({ open, onClose }) {
                   <span className="easy-sub">글자 읽기: {st.ocr.paddle ? '고정밀(Paddle) 켜짐' : '기본(tesseract) — 고정밀 서버 꺼짐'}</span>
                 </div>
                 {msg.now && <p className="easy-msg">{msg.now}</p>}
+                <div className="easy-row" style={{ marginTop: 8 }}>
+                  <span className="easy-sub">자동화 결과를 휴대폰으로:</span>
+                  {NOTIFY.map(([v, label]) => (
+                    <button key={v} className={`easy-pill ${(st.notify || 'errors') === v ? 'on' : ''}`} onClick={() => run('nt', () => api.agentNotify(v))}>{label}</button>
+                  ))}
+                </div>
               </Step>
 
               <section className="easy-activity">

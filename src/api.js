@@ -63,5 +63,10 @@ export const api = {
   agentHeartbeatEvery: (everyMin) => put('/api/agent/heartbeat', { everyMin }).then(ok),
   runHeartbeat: () => post('/api/heartbeat', {}).then(ok),
   decideApproval: (id, decision) => post(`/api/approvals/${id}/decide`, { decision }).then(ok),
+  listTemplates: () => authFetch('/api/templates').then(ok),
+  createTemplate: (id, params) => post(`/api/templates/${id}`, { params }).then(ok),
+  assistant: (text) => post('/api/assistant', { text }).then(ok),
+  assistantConfirm: (id, yes) => post(`/api/assistant/confirm/${id}`, { yes }).then(ok),
+  agentNotify: (notify) => put('/api/agent/notify', { notify }).then(ok),
   decidePending: (id, approve) => post(`/api/heartbeat/pending/${id}/${approve ? 'approve' : 'reject'}`, {}).then(ok),
 };

@@ -4,6 +4,8 @@ import { Goals, Heartbeats, PendingActions, Settings } from '../store.js';
 import { runHeartbeat, decidePending } from '../heartbeat.js';
 import { quickstart, status, activity, saveClaudeKey, saveTelegramToken, applyHeartbeatSetting } from '../quickstart.js';
 import { setMode, allowChat, removeChat, startTelegram } from '../telegramChannel.js';
+import { listTemplates, createFromTemplate } from '../templates.js';
+import { handleAssistant, confirmAssistant } from '../assistant.js';
 
 export const agent = Router();
 
@@ -60,4 +62,22 @@ agent.put('/agent/heartbeat', (req, res) => {
   const min = Math.max(0, Math.min(60, Number(req.body?.everyMin) || 0));
   Settings.set('agent', { heartbeatMin: min });
   res.json({ ok: true, everyMin: min, cron: applyHeartbeatSetting() });
+});
+
+/* ---------- 개인 비서 (specs/006) — 골라서 쓰기 · 말로 시키기 · 알림 ---------- */
+agent.get('/templates', (_req, res) => res.json(listTemplates()));
+agent.post('/templates/:id', (req, res) => {
+  const r = createFromTemplate(req.params.id, req.body?.params || {});
+  res.status(r.ok ? 200 : 400).json(r);
+});
+agent.post('/assistant', async (req, res) => {
+  const text = String(req.body?.text || '').slice(0, 1000);
+  if (!text.trim()) return res.status(400).json({ error: '말이 비어 있어요' });
+  res.json(await handleAssistant({ text, channel: 'web' }));
+});
+agent.post('/assistant/confirm/:id', async (req, res) => res.json(await confirmAssistant(req.params.id, !!req.body?.yes)));
+agent.put('/agent/notify', (req, res) => {
+  const v = ['errors', 'all', 'off'].includes(req.body?.notify) ? req.body.notify : 'errors';
+  Settings.set('agent', { notify: v });
+  res.json({ ok: true, notify: v });
 });

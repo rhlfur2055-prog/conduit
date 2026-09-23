@@ -114,6 +114,7 @@ export async function status() {
     ocr: { paddle: await paddleHealth() },
     quickstart: { ready: !!(s.quickWorkflowId && Workflows.get(s.quickWorkflowId) && goal), workflowId: s.quickWorkflowId || null, goalId: goal?.id || null, inbox: goal?.inbox || null },
     heartbeat: { everyMin: Number(s.heartbeatMin) || 0, env: process.env.CONDUIT_HEARTBEAT || null },
+    notify: s.notify || 'errors',
   };
 }
 

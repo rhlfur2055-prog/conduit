@@ -8,7 +8,7 @@ import path from 'node:path';
 import cron from 'node-cron';
 import { Settings, Workflows, Goals, Credentials, Heartbeats, PendingActions, Approvals, Executions, DATA_DIR } from './store.js';
 import { getApiKey } from './llm.js';
-import { tgToken, tgChatIds } from './telegram.js';
+import { tgToken, tgChatIds, tgApiBase } from './telegram.js';
 import { MODES, telegramMode, tgSettings, telegramRunning, inboxGoal } from './telegramChannel.js';
 import { paddleHealth } from './ocrEnsemble.js';
 import { runHeartbeat } from './heartbeat.js';
@@ -73,7 +73,8 @@ export async function saveClaudeKey(apiKey, { fetchImpl = fetch } = {}) {
   const key = String(apiKey || '').replace(/\s/g, '');
   if (!/^sk-ant-[A-Za-z0-9_-]{20,}$/.test(key)) return { ok: false, error: 'sk-ant- 로 시작하는 Anthropic API 키가 아니에요' };
   try {
-    const r = await fetchImpl('https://api.anthropic.com/v1/models?limit=1', { headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' } });
+    const anthropicBase = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/+$/, '');
+    const r = await fetchImpl(`${anthropicBase}/v1/models?limit=1`, { headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' } });
     if (r.status === 401) return { ok: false, error: 'Anthropic 이 이 키를 거부했어요 (401). 키를 다시 복사해 주세요' };
     if (r.status === 403) return { ok: false, error: '키는 맞지만 권한이 없어요 (403). 콘솔에서 결제·권한을 확인해 주세요' };
   } catch { /* 네트워크 문제 — 저장은 한다 */ }
@@ -86,7 +87,7 @@ export async function saveTelegramToken(botToken, { fetchImpl = fetch } = {}) {
   if (!/^\d{5,}:[A-Za-z0-9_-]{20,}$/.test(token)) return { ok: false, error: '봇 토큰 모양이 아니에요 (예: 123456789:AA…) — BotFather 가 준 값을 그대로 붙여 넣어 주세요' };
   let bot;
   try {
-    const r = await fetchImpl(`https://api.telegram.org/bot${token}/getMe`);
+    const r = await fetchImpl(`${tgApiBase()}/bot${token}/getMe`);
     const d = await r.json();
     if (!d.ok) return { ok: false, error: `텔레그램이 이 토큰을 거부했어요: ${d.description || r.status}` };
     bot = d.result;

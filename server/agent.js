@@ -178,7 +178,7 @@ const TOOLS = {
 };
 
 async function anthropic(messages, system, model, tools, key) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch(`${(process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/+$/, '')}/v1/messages`, {
     method: 'POST',
     headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({ model: model || 'claude-sonnet-5', max_tokens: 1500, system: system || undefined, tools, messages }),

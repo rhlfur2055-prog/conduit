@@ -177,6 +177,10 @@ export async function readText({ image, lang = 'kor+eng', engine = 'auto', minCo
   });
 
   let img;
+  // 이미지가 아닌 파일을 OCR 엔진에 넣으면 tesseract 워커가 잡히지 않는 오류를 낸다 — 들어가기 전에 막는다
+  if (typeof image === 'string' && /\.[a-z0-9]{1,5}$/i.test(image) && !/\.(png|jpe?g|gif|webp|bmp|tiff?)$/i.test(image) && !image.startsWith('data:')) {
+    return { simulated: true, error: `이미지 파일이 아닙니다: ${image.split(/[\\/]/).pop()}`, text: '', lines: [], words: [] };
+  }
   try { img = loadImage(image); } catch (e) { return { simulated: true, error: e.message, text: '', lines: [], words: [] }; }
 
   if (engine === 'tesseract') return { ...(await tess({ image, lang, minConfidence })), engine: 'tesseract' };

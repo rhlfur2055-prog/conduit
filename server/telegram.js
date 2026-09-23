@@ -8,7 +8,9 @@
 // ============================================================
 import { Credentials, Settings } from './store.js';
 
-const API = (token) => `https://api.telegram.org/bot${token}`;
+// TELEGRAM_API_BASE — 로컬 끝까지 테스트에서 가짜 텔레그램 서버를 가리킬 때만 쓴다 (기본값은 진짜 주소)
+export const tgApiBase = () => (process.env.TELEGRAM_API_BASE || 'https://api.telegram.org').replace(/\/+$/, '');
+const API = (token) => `${tgApiBase()}/bot${token}`;
 const MAX_TEXT = 3500;                                   // 텔레그램 메시지 4096자 제한 안쪽
 
 function credentialToken() {

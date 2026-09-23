@@ -15,6 +15,7 @@ import { callLLM } from './llm.js';
 import { loadImage, parseJson } from './vision.js';
 import { readText } from './ocrEnsemble.js';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import { ReadingMemory } from './store.js';
 import { recall as recallMemory, remember as rememberMemory } from './memory/memory.js';
 import { isInstruction } from './guard.js';
@@ -351,7 +352,11 @@ export async function socraticRead({ image, text, lang = 'kor+eng', engine = 'au
     return r;
   };
 
-  /* 1) 원문 확보 */
+  /* 1) 원문 확보 — 글 파일(.txt·.md)이 image 로 들어오면 OCR 하지 않고 글로 읽는다 (휴대폰에서 보낸 글) */
+  if (image && typeof image === 'string' && /\.(txt|md)$/i.test(image) && fs.existsSync(image)) {
+    text = fs.readFileSync(image, 'utf8');
+    image = undefined;
+  }
   let img = null;
   let ocrResult = null;
   let lines;

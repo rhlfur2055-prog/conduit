@@ -78,7 +78,7 @@ async function download(fileId, { call, token = tg.tgToken(), fetchImpl = fetch 
   const f = await call('getFile', { file_id: fileId });
   if (!f?.file_path) throw new Error('파일 경로를 받지 못했습니다');
   if (f.file_size && f.file_size > MAX_BYTES) throw new Error('10MB 보다 큽니다');
-  const r = await fetchImpl(`https://api.telegram.org/file/bot${token}/${f.file_path}`);
+  const r = await fetchImpl(`${tg.tgApiBase()}/file/bot${token}/${f.file_path}`);
   if (!r.ok) throw new Error(`파일 받기 실패 ${r.status}`);
   const buf = Buffer.from(await r.arrayBuffer());
   if (buf.length > MAX_BYTES) throw new Error('10MB 보다 큽니다');

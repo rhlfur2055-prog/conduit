@@ -13,6 +13,7 @@ import { chunk } from './chunkers.js';
 import { getEmbedder, embedderError } from './embedder.js';
 import { getReranker, rerankerError } from './reranker.js';
 import { DEFAULT_RECALL, scoreAll, select } from './retrieve.js';
+import { isInstruction, stripInstructions } from '../guard.js';
 
 const norm = (s) => String(s ?? '').normalize('NFC').replace(/\s+/g, ' ').trim();
 const keyOf = (type, text) => crypto.createHash('sha1').update(`${type}:${norm(text).toLowerCase()}`).digest('hex').slice(0, 16);
@@ -37,7 +38,11 @@ export async function remember({ docId, units, text, kind, facts = [], source = 
   const readAt = new Date().toISOString();
   const src = { ...source, readAt };
 
-  const chunks = await chunk({ units, text, kind, embed: embed || undefined });
+  // 숨은 지시("…라고 답하라")는 기억에 넣지 않는다 — 문서는 데이터이지 지시가 아니다
+  const quarantined = [];
+  const cleanUnits = units?.map((u) => { const s = stripInstructions(u.text); quarantined.push(...s.removed); return { ...u, text: s.clean }; }).filter((u) => u.text.trim());
+  const cleanText = text === undefined ? undefined : (() => { const s = stripInstructions(text); quarantined.push(...s.removed); return s.clean; })();
+  const chunks = await chunk({ units: cleanUnits, text: cleanText, kind, embed: embed || undefined });
   const entries = chunks.map((c) => ({
     type: 'source', kind: c.kind, text: c.text, lines: c.lines, docId, source: src, key: keyOf('source', c.text),
   }));
@@ -46,6 +51,7 @@ export async function remember({ docId, units, text, kind, facts = [], source = 
   for (const f of facts) {
     const quotes = [].concat(f.quote ?? []).map(norm).filter(Boolean);
     if (f.verified !== true || !quotes.length || !norm(f.text)) { rejected.push({ text: f.text, reason: f.verified !== true ? '검증되지 않음' : '인용 없음' }); continue; }
+    if (isInstruction(f.text) || quotes.some(isInstruction)) { rejected.push({ text: f.text, reason: '숨은 지시' }); continue; }
     entries.push({ type: 'fact', kind: 'fact', text: norm(f.text), quote: quotes, lines: f.lines || [], docId, source: src, key: keyOf('fact', f.text) });
   }
 
@@ -58,6 +64,7 @@ export async function remember({ docId, units, text, kind, facts = [], source = 
     added: added.length,
     skipped: entries.length - added.length,
     rejected,
+    quarantined,
     chunks: chunks.map((c) => ({ kind: c.kind, lines: c.lines, chars: c.text.length })),
     embedded: !!embed,
     ...(embed ? {} : { note: `임베딩 없이 저장했습니다 (${embedderError() || '임베더 없음'}) — 검색은 글자 겹침만 씁니다.` }),

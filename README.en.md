@@ -19,11 +19,11 @@ from the web UI or Telegram, in the spirit of openclaw — with one design rule 
 | **What** | Node-based workflow automation + a verified personal assistant (personal project, Aug 2026 –) |
 | **Stack** | Vite · React · React Flow / Express · Node.js · transformers.js / PaddleOCR (Python, optional) |
 | **Size** | **64 node types** · ~14,000 lines (frontend + server) |
-| **Tests** | **403 Vitest tests** + a **33-step local end-to-end check** that drives a real server process over HTTP |
-| **Language** | The UI and most docs are in Korean. This page summarizes everything in English. |
+| **Tests** | **432 Vitest tests** + a **33-step local end-to-end check** that drives a real server process over HTTP |
+| **Language** | The assistant and the Easy-start screen speak Korean and English. Most docs are in Korean; this page summarizes them. |
 
 ```bash
-npm install && npm test        # 403 tests
+npm install && npm test        # 432 tests
 node server/index.js           # server + built UI → http://localhost:8787 (opens the "Easy start" guide)
 npm run dev                    # canvas dev server → http://localhost:5173
 node server/local.e2e.js       # end-to-end: real server, fake Telegram/Anthropic, 33 checks
@@ -47,7 +47,7 @@ Fill in a couple of blanks and click **Turn on**. Results arrive on your phone v
 
 ### 2. Just say it — the assistant (like openclaw)
 
-Type into the web chat or message the Telegram bot (Korean phrases shown in the UI; translated here):
+Type into the web chat or message the Telegram bot, in Korean or English:
 
 - *"Remind me to take my medicine every day at 8:30"* → "Daily 8:30 AM reminder '⏰ take medicine' — create it? **[Create] [Cancel]**"
 - *"Tell me when https://… changes"* → page watch, hourly
@@ -61,14 +61,22 @@ How it understands you:
 3. **Nothing is created until you press [Create].** Workflows that send things out (Slack, mail, uploads, code) ask before running.
 4. **Memory questions are never answered by the LLM** — you get the stored quote and its source, verbatim.
 
-### 3. It starts work on its own — goals + heartbeat
+### 3. One bot, many people — each with their own language
+
+- **Each Telegram chat is one person.** On first contact the bot asks for language (Korean / English), name, wake-up time and interests (`/me` to change; also editable in the **People** tab).
+- **Everything is kept apart per person:** memory, automations, notifications and confirm buttons. A's reminder goes only to A's chat; if B asks about a document A read, the answer is "not found"; B can't press A's **[Create]** button.
+- **The PC owner** (the person using the web UI) sees all automations and runs, and is the only one who can change `/mode`.
+- **Personalized:** a reminder with no time ("remind me to drink water") defaults to that person's wake-up time; the morning brief shows topics matching their interests first.
+- **English commands** are parsed by the same kind of deterministic rules as Korean — **12 / 12** representative sentences. The web UI has a 한국어 / English toggle.
+
+### 4. It starts work on its own — goals + heartbeat
 
 Give it a goal ("read whatever lands in my inbox and remember it"). Every few minutes it wakes up, looks at what's new,
 and **proposes** actions. Code then checks each proposal: allowed workflow for that goal? evidence ids that actually exist?
 a file path that was actually detected (not an invented one)? duplicate? daily cap? Risky or low-confidence proposals go to
 a human approval queue. Without an API key it falls back to a rule mode.
 
-### 4. Phone ↔ PC over Telegram — you choose the direction
+### 5. Phone ↔ PC over Telegram — you choose the direction
 
 Modes: **both · receive only · send only · off** (default **off**). Switch in the UI or with `/mode` in Telegram.
 Unknown chats can't send anything in — they show up as a connection request you approve with one click.
@@ -117,7 +125,7 @@ Features were built the [spec-kit](https://github.com/github/spec-kit) way: prin
 with measured results written back into each spec. (Korean.)
 
 - [`.specify/memory/constitution.md`](.specify/memory/constitution.md) — six principles, e.g. *verify outside the model*, *say "I don't know"*, *remember only what's verified*, *numbers must be measured*
-- [`specs/001-verified-memory`](specs/001-verified-memory/spec.md) · [`003-value-grounding`](specs/003-value-grounding/spec.md) · [`004-goals-heartbeat`](specs/004-goals-heartbeat/spec.md) · [`005-telegram-two-way`](specs/005-telegram-two-way/spec.md) · [`006-personal-assistant`](specs/006-personal-assistant/spec.md)
+- [`specs/001-verified-memory`](specs/001-verified-memory/spec.md) · [`003-value-grounding`](specs/003-value-grounding/spec.md) · [`004-goals-heartbeat`](specs/004-goals-heartbeat/spec.md) · [`005-telegram-two-way`](specs/005-telegram-two-way/spec.md) · [`006-personal-assistant`](specs/006-personal-assistant/spec.md) · [`007-people-and-languages`](specs/007-people-and-languages/spec.md)
 
 ## Running the optional pieces
 

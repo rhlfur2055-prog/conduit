@@ -325,3 +325,51 @@ describe('socraticRead + 장기 기억', () => {
     expect(calls.remember).toHaveLength(0);
   });
 });
+
+/* ---------- specs/003 — 답의 값 근거 검증 ---------- */
+import { extractValues, groundValues } from '../../server/socratic.js';
+
+describe('extractValues · groundValues — 인용은 진짜인데 답의 값이 틀린 경우', () => {
+  it('숫자는 쉼표·앞자리 0 을 정규화하고, 날짜는 조각으로 뽑는다', () => {
+    expect(extractValues('VAT 120,000원').numbers).toEqual(['120000']);
+    expect(extractValues('2026-09-23').numbers).toEqual(['2026', '9', '23']);
+    expect(extractValues('Invoice #2048').numbers).toEqual(['2048']);
+    expect(extractValues('3분기 매출 4,200만 원 · 예산 1.2억').numbers).toEqual(['3', '42000000', '120000000']);
+  });
+  it('ID·약어는 값, 일반 영단어·줄 번호는 값이 아니다', () => {
+    expect(extractValues('The network is Office_5G, see L2 and Q3').ids).toEqual(['office_5g']);
+    expect(extractValues('API 키').ids).toEqual(['api']);
+  });
+  it('인용에 없는 숫자는 missing, 표현이 달라도 같은 수면 통과, 140 안의 14 는 통과시키지 않는다', () => {
+    expect(groundValues('결제일은 15일이다', '결제일은 매월 14일입니다').missing).toEqual(['15']);
+    expect(groundValues('매달 14일에 결제', '결제일은 매월 14일입니다').missing).toEqual([]);
+    expect(groundValues('14일', '매월 140일').missing).toEqual(['14']);
+    expect(groundValues('부가세는 120000원', 'VAT 120,000원').missing).toEqual([]);
+    expect(groundValues('매출은 4,200만 원', '3분기 매출 42,000,000원 달성').missing).toEqual([]);
+  });
+});
+
+describe('verifyQuestion + 값 검증', () => {
+  it('인용은 진짜인데 답의 숫자가 틀리면 반박 (unsupported_value)', () => {
+    const q = verifyQuestion({ id: 'Q1', type: 'claim', a: '결제일은 15일이다', evidence: [{ line: 'L1', quote: '결제일은 매월 14일입니다' }] }, LINES);
+    expect(q).toMatchObject({ status: 'refuted', reason: 'unsupported_value', unsupported: ['15'] });
+  });
+  it('추론 유형은 인용 밖 값을 반박하지 않고 derived 로 드러낸다', () => {
+    const q = verifyQuestion({ id: 'Q1', type: 'implication', a: '그러면 15일부터 연체다', evidence: [{ line: 'L1', quote: '결제일은 매월 14일입니다' }] }, LINES);
+    expect(q).toMatchObject({ status: 'verified', derived: ['15'] });
+  });
+  it('값이 없는 서술형 답은 영향이 없다', () => {
+    expect(verifyQuestion({ id: 'Q1', type: 'claim', a: '잔액을 미리 채워야 한다', evidence: [{ line: 'L2', quote: '잔액을 채워 주세요' }] }, LINES).status).toBe('verified');
+  });
+  it('논박 라운드에서 틀린 값을 짚어 되돌리고, 고친 답은 통과한다', async () => {
+    const p1 = JSON.stringify({ questions: [{ id: 'Q1', type: 'claim', q: '결제일?', a: '15일', evidence: [{ line: 'L1', quote: '결제일은 매월 14일입니다' }] }] });
+    const p2 = JSON.stringify({ questions: [{ id: 'Q1', type: 'claim', q: '결제일?', a: '14일', evidence: [{ line: 'L1', quote: '결제일은 매월 14일입니다' }] }] });
+    const s = JSON.stringify({ sentences: ['결제일은 14일 [L1]'] });
+    const llm = scriptedLLM([p1, p2, s]);
+    const memory = fakeMemory();
+    const r = await socraticRead({ text: DOC, rounds: 2, _deps: { llm, memory } });
+    expect(llm.calls[1].prompt).toMatch(/답의 값 15 는 인용한 줄 어디에도 없다/);
+    expect(r.questions[0]).toMatchObject({ status: 'verified', repaired: true });
+    expect(memory.snapshot.mistakes).toEqual({ unsupported_value: 1 });
+  });
+});

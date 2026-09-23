@@ -147,14 +147,74 @@ export function verifyEvidence(ev, lines) {
   return { ok: false, kind: sim >= PARAPHRASE_SIM ? 'paraphrased' : 'fabricated', similarity: Number(sim.toFixed(2)) };
 }
 
-/** 질문 하나의 모든 인용을 검증해 상태를 붙인다 */
+/* ---------- 답의 값 근거 검증 (specs/003-value-grounding) ----------
+   인용이 진짜여도 답이 틀릴 수 있다 ("결제일은 매월 14일" 을 인용하고 "15일이다" 라고 답하는 경우).
+   의미 전체는 판정하지 않고, 코드로 확인할 수 있는 값(숫자 · ID·약어)만 반드시 인용한 줄 안에 있어야 한다. */
+
+// 추론이 필요한 유형 — 인용 밖의 값이 나올 수 있어 반박하지 않고 derived 로 드러낸다
+export const INFERENCE_TYPES = new Set(['assumption', 'counterexample', 'implication', 'connection']);
+
+const REF_TOKEN = /^[LMQV]\d+$/i;                      // 줄·질문 번호
+const ORDINAL = /^\d+(st|nd|rd|th)$/i;
+
+const normNumber = (s) => {
+  const n = Number(String(s).replace(/,/g, ''));
+  return Number.isFinite(n) ? String(n) : String(s).replace(/,/g, '');
+};
+
+/** 답에서 확인할 수 있는 값을 뽑는다 — 숫자(쉼표·앞자리 0 정규화, 날짜는 조각별)와 ID·약어 토큰 */
+export function extractValues(text) {
+  const ids = new Set();
+  const numbers = new Set();
+  const t = String(text ?? '').normalize('NFKC');
+  for (const m of t.matchAll(/[A-Za-z0-9_#][A-Za-z0-9_#.,:-]*/g)) {
+    const tok = m[0].replace(/[.,:-]+$/, '');
+    if (!tok || REF_TOKEN.test(tok)) continue;
+    if (ORDINAL.test(tok)) { numbers.add(normNumber(tok.replace(/\D+$/, ''))); continue; }
+    if (/[A-Za-z]/.test(tok)) {
+      // ID·약어: 글자와 숫자가 섞였거나 _·# 가 있거나 대문자 2자 이상. 일반 영단어는 값이 아니다
+      if (/[0-9_#]/.test(tok) || /^[A-Z]{2,}$/.test(tok)) ids.add(tok.toLowerCase());
+      continue;
+    }
+    // 한국어 큰 단위 — "4,200만" = 42000000, "1.2억" = 120000000
+    const unit = { 만: 1e4, 억: 1e8 }[t[m.index + m[0].length]];
+    if (unit && /^\d[\d,]*(\.\d+)?$/.test(tok)) { numbers.add(normNumber(String(Math.round(Number(tok.replace(/,/g, '')) * unit)))); continue; }
+    // 숫자: 날짜·시각(2026-09-23, 15:00)은 조각으로, 192.168.0.12 같은 점 여러 개는 통째로
+    for (const part of tok.replace(/^#/, '').split(/[-:]/)) if (/^\d[\d,]*(\.\d+)*$/.test(part)) numbers.add(normNumber(part));
+  }
+  return { numbers: [...numbers], ids: [...ids] };
+}
+
+/** 답의 값 중 근거 텍스트에 없는 것 — 숫자는 수 단위로 비교한다 (14 가 140 안에 있다고 통과시키지 않는다) */
+export function groundValues(answer, evidenceText) {
+  const a = extractValues(answer);
+  const e = extractValues(evidenceText);
+  const nums = new Set(e.numbers);
+  const idText = String(evidenceText ?? '').normalize('NFKC').toLowerCase();
+  const missing = [
+    ...a.numbers.filter((n) => !nums.has(n)),
+    ...a.ids.filter((id) => !e.ids.includes(id) && !idText.includes(id)),
+  ];
+  return { values: [...a.numbers, ...a.ids], missing };
+}
+
+/** 질문 하나의 모든 인용을 검증해 상태를 붙인다 — 인용 대조 후, 답의 값이 인용한 줄에 있는지 본다 */
 export function verifyQuestion(q, lines) {
   const evidence = (Array.isArray(q.evidence) ? q.evidence : []).map((ev) => ({ ...ev, check: verifyEvidence(ev, lines) }));
   if (q.answerable === false) return { ...q, evidence, status: 'unanswerable' };
   if (!evidence.length) return { ...q, evidence, status: 'refuted', reason: 'no_evidence' };
   const bad = evidence.find((ev) => !ev.check.ok);
   if (bad) return { ...q, evidence, status: 'refuted', reason: bad.check.kind };
-  return { ...q, evidence: evidence.map((ev) => ({ ...ev, line: ev.check.line })), status: 'verified' };
+  const ev2 = evidence.map((ev) => ({ ...ev, line: ev.check.line }));
+  // 근거 = 인용한 줄 전체 + 인용 (줄을 넘는 인용은 시작 줄만 알므로 인용 문자열도 넣는다)
+  const evidenceText = ev2.map((ev) => `${lines.find((l) => l.id === ev.line)?.text ?? ''} ${ev.quote ?? ''}`).join('\n');
+  const g = groundValues(q.a, evidenceText);
+  if (g.missing.length) {
+    const inference = q.inference === true || INFERENCE_TYPES.has(q.type);
+    if (!inference) return { ...q, evidence: ev2, status: 'refuted', reason: 'unsupported_value', unsupported: g.missing };
+    return { ...q, evidence: ev2, status: 'verified', derived: g.missing };
+  }
+  return { ...q, evidence: ev2, status: 'verified' };
 }
 
 /** 글자 확정 결과를 원래 OCR 줄과 비교해, 교정은 받고 재작성은 거부한다 */
@@ -203,7 +263,7 @@ export function lessonsText(memory) {
   const glyph = conf.length
     ? `이전 읽기에서 확인된 OCR 오인식 (틀린→맞는, 횟수): ${conf.map(([k, n]) => `${k}(${n})`).join(', ')}.\n이 쌍이 보이면 한 번 더 의심하라. 단, 이미지와 문맥이 지지할 때만 고친다.`
     : '';
-  const names = { paraphrased: '인용을 의역함', fabricated: '원문에 없는 인용을 지어냄', wrong_line: '줄 번호를 틀림', too_short: '너무 짧은 인용', no_evidence: '근거 없이 답함' };
+  const names = { paraphrased: '인용을 의역함', fabricated: '원문에 없는 인용을 지어냄', wrong_line: '줄 번호를 틀림', too_short: '너무 짧은 인용', no_evidence: '근거 없이 답함', unsupported_value: '인용에 없는 값(숫자·ID)을 답에 넣음' };
   const kinds = Object.entries(memory.mistakes || {}).sort((a, b) => b[1] - a[1]);
   const ex = (memory.examples || []).slice(0, HINT_EXAMPLES);
   const reading = kinds.length
@@ -378,6 +438,7 @@ export async function socraticRead({ image, text, lang = 'kor+eng', engine = 'au
         if (ev.check && (!ev.check.ok || ev.check.kind === 'wrong_line')) mistakes.push({ kind: ev.check.kind, quote: ev.quote, line: ev.line });
       }
       if (q.status === 'refuted' && !(q.evidence || []).length) mistakes.push({ kind: 'no_evidence', quote: q.a, line: null });
+      if (q.reason === 'unsupported_value') mistakes.push({ kind: 'unsupported_value', quote: `${q.a} (근거 없는 값: ${q.unsupported.join(', ')})`, line: null });
     }
   };
   collect(questions);
@@ -389,6 +450,7 @@ export async function socraticRead({ image, text, lang = 'kor+eng', engine = 'au
     const objections = refuted.map((q) => {
       const bad = (q.evidence || []).find((ev) => !ev.check?.ok);
       const why = q.reason === 'connection_needs_both' ? '연결 답은 지금 글(L) 인용과 기억(M) 인용이 둘 다 있어야 한다'
+        : q.reason === 'unsupported_value' ? `답의 값 ${q.unsupported.join(', ')} 는 인용한 줄 어디에도 없다. 인용한 줄에 있는 값만 답에 쓴다`
         : !bad ? '근거 인용이 없다'
         : bad.check.kind === 'paraphrased' ? `인용 "${bad.quote}" 는 원문을 의역했다. 원문은 글자 그대로 복사해야 한다`
         : bad.check.kind === 'too_short' ? `인용 "${bad.quote}" 는 너무 짧아 근거가 되지 못한다`

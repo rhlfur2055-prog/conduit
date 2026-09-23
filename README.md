@@ -1,5 +1,7 @@
 # Conduit — 자동화 워크플로 빌더
 
+[English](README.en.md) · **한국어**
+
 [![test](https://github.com/rhlfur2055-prog/conduit/actions/workflows/test.yml/badge.svg)](https://github.com/rhlfur2055-prog/conduit/actions/workflows/test.yml)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -12,15 +14,40 @@ n8n / Make 같은 **노드 기반 자동화 툴**을 직접 만든 프로젝트�
 |---|---|
 | **무엇** | 노드 기반 워크플로 자동화 플랫폼 (개인 프로젝트, 2026.08 ~) |
 | **스택** | Vite · React · React Flow / Express · Node.js / Docker |
-| **규모** | 노드 **59종** · 프론트+서버 약 10,000줄 |
-| **테스트** | **Vitest 240개** — 실행 엔진 · 표현식 · 재시도 · 승인 게이트 · API 인증 · MCP · 화면 인식 |
+| **규모** | 노드 **64종** · 프론트+서버 약 14,000줄 |
+| **테스트** | **Vitest 403개** + 진짜 서버를 HTTP 로만 조작하는 **로컬 끝까지 점검 33단계** (`node server/local.e2e.js`) |
 | **실사용** | 스케줄 → 대본 → TTS → Remotion 렌더 → YouTube 업로드 파이프라인으로 만든 영상이 실제 채널에 공개돼 있음 |
 
 ```bash
-npm install && npm test      # 240개 통과
+npm install && npm test      # 403개 통과
 npm run dev                  # 캔버스 → localhost:5173
 node server/index.js         # 백엔드 → localhost:8787
 ```
+
+---
+
+## 개인 비서 — 지어내지 않는 비서
+
+`node server/index.js` 로 켜고 http://localhost:8787 을 열면 **쉬운 시작** 창이 뜬다. 노드를 몰라도 된다.
+
+| | |
+|---|---|
+| **골라서 쓰기** | 템플릿 5개 — 사진·글 읽고 답하기 · 할 일 알림 · 아침 브리핑 · 웹페이지 바뀌면 알림 · 이번 주 읽은 것 정리 |
+| **말로 시키기** | 화면 채팅·텔레그램에 "매일 8시 30분에 약 먹으라고 알려줘" → **[만들기]** 를 눌러야 켜진다. 규칙으로 대표 문장 20/20 |
+| **스스로 시작** | 목표 + 자동 확인(하트비트) — LLM 은 제안만, 실행은 코드가 검증한 뒤 |
+| **휴대폰 ↔ PC** | 텔레그램 양방향, 모드는 사용자가 고른다 (둘 다 · 받기만 · 보내기만 · 끄기, 기본 끄기) |
+
+**원칙: 모델은 제안하고, 코드가 검증한다.** 답마다 원문 인용을 달고, 인용이 원문에 글자 그대로 있는지 · 답의 숫자가 인용에 있는지 코드가 대조한다.
+
+| 층 | 실측 (정답을 아는 데이터, 문턱은 절반으로 고르고 나머지 절반으로 시험) |
+|---|---|
+| 글자 읽기 (PaddleOCR) | 줄 내용 일치 **97.2%** (tesseract 단독 67%) |
+| 값 검증 | 틀린 숫자·ID 잡음 **97.6%** · 오탐 **0%** |
+| 기억 검색 (임베딩 → 리랭커) | 관련 1등 적중 **91.7%** · 무관 거절 **100%** (유사도 0.7 방식은 거절 0%) |
+| 스트레스 테스트 (틀린 답을 고집하는 가짜 LLM) | 틀린 답이 최종 결과까지 새는 비율 **5.1%** (검증 없는 openclaw 방식 기준선 100%) |
+
+LLM 답 품질 자체는 실제 키가 없어 **미측정**이다. openclaw 와 직접 비교한 벤치마크는 하지 않았다 (기준선은 공개 설계를 재현한 것).
+명세·계획·측정 결과: [`.specify/memory/constitution.md`](.specify/memory/constitution.md) · [`specs/`](specs/)
 
 ---
 

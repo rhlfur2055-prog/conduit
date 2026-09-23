@@ -4,11 +4,11 @@
 
 필요: paddlepaddle, paddleocr(3.x), opencv-python, numpy  (Python 3.10~3.13 — paddle 휠이 3.14 에는 없다)
 
-POST /ocr   {"image": "<base64>"}
+POST /ocr   {"image": "<base64>", "extras": false}
   → {"lines": [{"box": [x, y, w, h],
                 "paddle":   {"text", "score"},      PaddleOCR 한국어 인식
-                "paddleEn": {"text", "score"},      영문 모델 인식
-                "crops": {"orig", "up2", "up3bin"}   tesseract 가 읽을 줄 이미지 (PNG base64)}],
+                "paddleEn": {"text", "score"},      영문 모델 인식          ← extras 일 때만
+                "crops": {"orig", "up2", "up3bin"}   tesseract 가 읽을 줄 이미지 ← extras 일 때만}],
      "size": [w, h], "ms": 123}
 GET  /health → {"ok": true}
 
@@ -72,7 +72,7 @@ def crop(img, box, ratio):
     return cv2.copyMakeBorder(c, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=(255, 255, 255))
 
 
-def read(image_bgr):
+def read(image_bgr, extras=False):
     r = PIPE.predict(image_bgr)[0]
     boxes = []
     for poly in r["rec_polys"]:
@@ -82,6 +82,10 @@ def read(image_bgr):
         boxes.append((int(x0), int(y0), int(x1), int(y1)))
     if not boxes:
         return []
+    if not extras:
+        # 앙상블이 아니면 영문 모델·줄 이미지는 쓰이지 않는다 — 만들지 않는다 (문서당 3.0초 → 1.x초)
+        return [{"box": [b[0], b[1], b[2] - b[0], b[3] - b[1]], "paddle": {"text": t, "score": round(float(sc), 4)}}
+                for b, t, sc in zip(boxes, r["rec_texts"], r["rec_scores"])]
     en = [{"text": x["rec_text"], "score": round(float(x["rec_score"]), 4)}
           for x in REC_EN.predict([crop(image_bgr, b, EN_PAD) for b in boxes], batch_size=8)]
     lines = []
@@ -122,7 +126,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": "이미지를 해석할 수 없습니다"})
             t0 = time.time()
             with LOCK:
-                lines = read(img)
+                lines = read(img, extras=bool(payload.get("extras")))
             self._json(200, {"lines": lines, "size": [img.shape[1], img.shape[0]], "ms": round((time.time() - t0) * 1000)})
         except Exception as e:  # noqa: BLE001
             self._json(500, {"error": str(e)})

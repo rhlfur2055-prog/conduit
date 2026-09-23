@@ -128,12 +128,12 @@ export async function paddleHealth({ baseUrl } = {}) {
   }
 }
 
-async function paddleLines(img, { baseUrl, timeoutMs = 60000 } = {}) {
+async function paddleLines(img, { baseUrl, extras = false, timeoutMs = 60000 } = {}) {
   const base = (baseUrl || DEFAULT_BASE).replace(/\/+$/, '');
   const r = await fetch(`${base}/ocr`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ image: img.base64 }),
+    body: JSON.stringify({ image: img.base64, extras }),
     signal: AbortSignal.timeout(timeoutMs),
   });
   const data = await r.json().catch(() => ({}));
@@ -183,7 +183,7 @@ export async function readText({ image, lang = 'kor+eng', engine = 'auto', minCo
 
   let pd;
   try {
-    pd = await paddle(img, { baseUrl });
+    pd = await paddle(img, { baseUrl, extras: engine === 'ensemble' });
   } catch (e) {
     if (engine === 'ensemble' || engine === 'paddle') return { error: true, note: `Paddle OCR 서버를 쓸 수 없습니다: ${e.message}`, text: '', lines: [] };
     const t = await tess({ image, lang, minConfidence });

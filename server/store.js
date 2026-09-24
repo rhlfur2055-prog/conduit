@@ -1,11 +1,11 @@
 // ============================================================
-// 파일 기반 저장소 + 크리덴셜 AES-256-GCM 암호화
-// server/data/ 아래에 JSON 파일로 영속화한다.
+// 저장소 — 설정은 JSON 파일(server/data/*.json), 운영 기록은 SQLite(server/data/conduit.db) + 크리덴셜 AES-256-GCM 암호화
 // ============================================================
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { openDb, transaction, bind, parseJson, migrateLegacyJson } from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // CONDUIT_DATA_DIR 로 바꿀 수 있다 (테스트가 임시 폴더를 쓰도록 — 실제 데이터를 건드리지 않게)
@@ -104,6 +104,14 @@ export const Workflows = {
   },
 };
 
+/* ============================================================
+   운영 기록 — SQLite (server/db.js)
+   실행 기록 · 멱등 키 · DLQ · 승인 대기는 "두 번 와도 한 번", "죽어도 그대로" 가 약속이라
+   유니크 제약과 트랜잭션이 있는 곳에 둔다. API 모양은 JSON 시절과 같다.
+   ============================================================ */
+export const db = openDb(DATA_DIR);
+export function closeDb() { try { db.close(); } catch { /* 이미 닫힘 */ } }
+
 /* ---------- 실행 기록 ----------
    전체 상한만 두면 매분 도는 워크플로 하나가 슬롯을 독식해서
    다른 워크플로 기록이 하루도 못 버티고 밀려난다.
@@ -111,84 +119,83 @@ export const Workflows = {
 const EXEC_MAX_TOTAL = Number(process.env.EXEC_MAX_TOTAL) || 200;
 const EXEC_MAX_PER_WORKFLOW = Number(process.env.EXEC_MAX_PER_WORKFLOW) || 30;
 
+const execRow = (r) => r && ({
+  id: r.id, at: r.at, workflowId: r.workflow_id, workflowName: r.workflow_name, trigger: r.trigger, status: r.status,
+  logs: parseJson(r.logs, []), statuses: parseJson(r.statuses, {}),
+});
+const execInsert = (rec) => db.prepare(
+  `INSERT OR REPLACE INTO executions (id, workflow_id, workflow_name, trigger, status, at, logs, statuses) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+).run(rec.id, bind.text(rec.workflowId), bind.text(rec.workflowName), bind.text(rec.trigger), bind.text(rec.status ?? 'unknown'), rec.at, bind.json(rec.logs ?? []), bind.json(rec.statuses ?? {}));
+
 export const Executions = {
-  all: () => readJSON('executions.json', []),
+  all: () => db.prepare(`SELECT * FROM executions ORDER BY at DESC, rowid DESC`).all().map(execRow),
   add(exec) {
     const rec = { id: uid('ex'), at: new Date().toISOString(), ...exec };
-    const seen = new Map();
-    const kept = [];
-    for (const e of [rec, ...Executions.all()]) {   // 최신순으로 훑는다
-      const key = e.workflowId || '?';
-      const n = (seen.get(key) || 0) + 1;
-      seen.set(key, n);
-      if (n > EXEC_MAX_PER_WORKFLOW) continue;      // 워크플로별 상한 초과 → 버림
-      kept.push(e);
-      if (kept.length >= EXEC_MAX_TOTAL) break;     // 전체 상한
-    }
-    writeJSON('executions.json', kept);
+    transaction(db, () => {
+      execInsert(rec);
+      // 워크플로별 상한 → 전체 상한. 최신순으로 번호를 매겨 넘치는 것만 지운다.
+      db.prepare(`DELETE FROM executions WHERE id IN (
+        SELECT id FROM (SELECT id, row_number() OVER (PARTITION BY COALESCE(workflow_id, '?') ORDER BY at DESC, rowid DESC) AS rn FROM executions) WHERE rn > ?)`).run(EXEC_MAX_PER_WORKFLOW);
+      db.prepare(`DELETE FROM executions WHERE id IN (
+        SELECT id FROM (SELECT id, row_number() OVER (ORDER BY at DESC, rowid DESC) AS rn FROM executions) WHERE rn > ?)`).run(EXEC_MAX_TOTAL);
+    });
     return rec;
   },
-  forWorkflow: (wfId) => Executions.all().filter((e) => e.workflowId === wfId),
+  forWorkflow: (wfId) => db.prepare(`SELECT * FROM executions WHERE workflow_id = ? ORDER BY at DESC, rowid DESC`).all(wfId).map(execRow),
 };
 
 /* ---------- 멱등성: 처리완료 마커 ----------
-   claim() 이 false 를 주면 이미 처리했거나 처리중 → 실행을 건너뛴다. */
+   claim() 이 false 를 주면 이미 처리했거나 처리중 → 실행을 건너뛴다.
+   "누가 먼저 잡았나" 는 유니크 키에 대한 UPSERT 한 문장이 정한다 — 읽고 나서 쓰는 사이가 없다. */
 const LOCK_TTL_MS = 5 * 60 * 1000;
+const PROCESSED_MAX = 2000;
 
 export const ProcessedEvents = {
-  all: () => readJSON('processed.json', []),
-  find: (key) => ProcessedEvents.all().find((e) => e.idempotency_key === key),
+  all: () => db.prepare(`SELECT * FROM processed_events ORDER BY first_seen_at ASC, rowid ASC`).all(),
+  find: (key) => db.prepare(`SELECT * FROM processed_events WHERE idempotency_key = ?`).get(key) ?? undefined,
 
   /** @returns {{claimed:boolean, reason?:string}} */
   claim(key, { source = 'unknown', eventType = '' } = {}) {
-    const list = ProcessedEvents.all();
-    const now = Date.now();
-    const rec = list.find((e) => e.idempotency_key === key);
-
-    if (rec) {
-      if (rec.status === 'done') return { claimed: false, reason: 'already_done' };
-      if (rec.status === 'pending' && new Date(rec.locked_until).getTime() > now) {
-        return { claimed: false, reason: 'in_progress' };
+    const now = new Date();
+    const nowISO = now.toISOString();
+    const lockedUntil = new Date(now.getTime() + LOCK_TTL_MS).toISOString();
+    return transaction(db, () => {
+      // 새 키면 INSERT. 있는 키면: done 이 아니고, (pending 이 아니거나 잠금이 풀렸을 때만) 다시 잡는다.
+      const r = db.prepare(`
+        INSERT INTO processed_events (idempotency_key, source, event_type, status, first_seen_at, completed_at, attempts, locked_until, result_ref)
+        VALUES (?, ?, ?, 'pending', ?, NULL, 1, ?, NULL)
+        ON CONFLICT (idempotency_key) DO UPDATE SET
+          status = 'pending', attempts = attempts + 1, locked_until = excluded.locked_until,
+          source = excluded.source, event_type = excluded.event_type, completed_at = NULL
+        WHERE processed_events.status != 'done'
+          AND (processed_events.status != 'pending' OR processed_events.locked_until <= ?)`,
+      ).run(key, source, eventType, nowISO, lockedUntil, nowISO);
+      if (r.changes === 1) {
+        db.prepare(`DELETE FROM processed_events WHERE rowid NOT IN (SELECT rowid FROM processed_events ORDER BY first_seen_at DESC, rowid DESC LIMIT ?)`).run(PROCESSED_MAX);
+        return { claimed: true };
       }
-    }
-    const next = {
-      idempotency_key: key,
-      source,
-      event_type: eventType,
-      status: 'pending',
-      first_seen_at: rec?.first_seen_at || new Date(now).toISOString(),
-      completed_at: null,
-      attempts: (rec?.attempts || 0) + 1,
-      locked_until: new Date(now + LOCK_TTL_MS).toISOString(),
-      result_ref: null,
-    };
-    writeJSON('processed.json', [...list.filter((e) => e.idempotency_key !== key), next].slice(-2000));
-    return { claimed: true };
+      const rec = ProcessedEvents.find(key);
+      return { claimed: false, reason: rec?.status === 'done' ? 'already_done' : 'in_progress' };
+    });
   },
 
   complete(key, resultRef = null) {
-    const list = ProcessedEvents.all();
-    const rec = list.find((e) => e.idempotency_key === key);
-    if (!rec) return;
-    rec.status = 'done';
-    rec.completed_at = new Date().toISOString();
-    rec.result_ref = resultRef;
-    writeJSON('processed.json', list);
+    db.prepare(`UPDATE processed_events SET status = 'done', completed_at = ?, result_ref = ? WHERE idempotency_key = ?`)
+      .run(new Date().toISOString(), bind.text(resultRef), key);
   },
 
   fail(key) {
-    const list = ProcessedEvents.all();
-    const rec = list.find((e) => e.idempotency_key === key);
-    if (!rec) return;
-    rec.status = 'failed';
-    rec.locked_until = new Date(0).toISOString(); // 즉시 재시도 가능
-    writeJSON('processed.json', list);
+    // 즉시 재시도 가능
+    db.prepare(`UPDATE processed_events SET status = 'failed', locked_until = ? WHERE idempotency_key = ?`).run(new Date(0).toISOString(), key);
   },
 };
 
 /* ---------- DLQ: 실패 항목 격리 큐 ---------- */
+const DLQ_MAX = 500;
+const dlqRow = (r) => r && ({ ...r, payload: parseJson(r.payload, null) });
+
 export const DLQ = {
-  all: () => readJSON('dlq.json', []),
+  all: () => db.prepare(`SELECT * FROM dlq ORDER BY failed_at DESC, rowid DESC`).all().map(dlqRow),
   add(entry) {
     const rec = {
       id: uid('dlq'),
@@ -198,52 +205,136 @@ export const DLQ = {
       node_kind: entry.nodeKind ?? null,
       item_key: entry.itemKey ?? null,
       payload: entry.payload ?? null,
-      error_code: entry.errorCode ?? 'UNKNOWN',
+      error_code: String(entry.errorCode ?? 'UNKNOWN'),
       error_msg: String(entry.errorMsg ?? '').slice(0, 800),
       attempts: entry.attempts ?? 1,
       failed_at: new Date().toISOString(),
       replay_status: 'pending',
     };
-    writeJSON('dlq.json', [rec, ...DLQ.all()].slice(0, 500));
+    transaction(db, () => {
+      db.prepare(`INSERT INTO dlq (id, workflow_id, workflow_name, node_id, node_kind, item_key, payload, error_code, error_msg, attempts, failed_at, replay_status)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(rec.id, bind.text(rec.workflow_id), bind.text(rec.workflow_name), bind.text(rec.node_id), bind.text(rec.node_kind), bind.text(rec.item_key),
+          bind.json(rec.payload), rec.error_code, rec.error_msg, bind.int(rec.attempts), rec.failed_at, rec.replay_status);
+      db.prepare(`DELETE FROM dlq WHERE rowid NOT IN (SELECT rowid FROM dlq ORDER BY failed_at DESC, rowid DESC LIMIT ?)`).run(DLQ_MAX);
+    });
     return rec;
   },
   setStatus(id, replay_status) {
-    const list = DLQ.all();
-    const rec = list.find((r) => r.id === id);
-    if (rec) { rec.replay_status = replay_status; writeJSON('dlq.json', list); }
-    return rec;
+    db.prepare(`UPDATE dlq SET replay_status = ? WHERE id = ?`).run(replay_status, id);
+    return dlqRow(db.prepare(`SELECT * FROM dlq WHERE id = ?`).get(id)) ?? undefined;
   },
-  remove(id) { writeJSON('dlq.json', DLQ.all().filter((r) => r.id !== id)); },
+  remove(id) { db.prepare(`DELETE FROM dlq WHERE id = ?`).run(id); },
 };
 
 /* ---------- 사람 승인 대기 ----------
    워크플로가 승인 노드에서 멈출 때의 스냅샷(그때까지의 노드 출력 + 노드/엣지)과 결정을 보관한다.
-   서버가 재시작돼도 파일에 남으므로, 버튼을 늦게 눌러도 이어서 실행할 수 있다. */
+   서버가 재시작돼도 남으므로, 버튼을 늦게 눌러도 이어서 실행할 수 있다.
+   결정은 claimDecision() 한 문장(UPDATE … WHERE status='pending')이 정한다 — 두 번 눌러도, 두 프로세스가 눌러도 한 번. */
 const APPROVALS_MAX = Number(process.env.APPROVALS_MAX) || 500;
 
+// 기록 필드(camelCase) ↔ 열(snake_case). 여기 없는 필드로 update() 하면 오류 — 조용히 버려지는 것보다 낫다.
+const AP_COLS = {
+  id: ['id', 'text'], status: ['status', 'text'], channel: ['channel', 'text'], chatId: ['chat_id', 'text'],
+  title: ['title', 'text'], text: ['text', 'text'], item: ['item', 'json'],
+  nodeId: ['node_id', 'text'], workflowId: ['workflow_id', 'text'], workflowName: ['workflow_name', 'text'], trigger: ['trigger', 'text'],
+  flow: ['flow', 'json'], snapshot: ['snapshot', 'json'],
+  createdAt: ['created_at', 'text'], remindAt: ['remind_at', 'text'], expireAt: ['expire_at', 'text'], reminded: ['reminded', 'bool'],
+  messageId: ['message_id', 'int'], error: ['error', 'text'],
+  decision: ['decision', 'text'], editedText: ['edited_text', 'text'], by: ['decided_by', 'text'], decidedAt: ['decided_at', 'text'],
+  resumeStatus: ['resume_status', 'text'], resumeError: ['resume_error', 'text'],
+  resumeStartedAt: ['resume_started_at', 'text'], resumeEndedAt: ['resume_ended_at', 'text'], resumedExecutionId: ['resumed_execution_id', 'text'],
+};
+const AP_FIELDS = Object.keys(AP_COLS);
+const apRow = (r) => {
+  if (!r) return null;
+  const out = {};
+  for (const [field, [col, kind]] of Object.entries(AP_COLS)) {
+    const v = r[col];
+    out[field] = kind === 'json' ? (v == null ? undefined : parseJson(v, undefined)) : kind === 'bool' ? !!v : v ?? null;   // JSON 열이 NULL 이면 undefined (버린 flow/snapshot)
+  }
+  return out;
+};
+const apBind = (field, v) => {
+  const [, kind] = AP_COLS[field];
+  return kind === 'json' ? bind.json(v) : kind === 'bool' ? bind.bool(v) : kind === 'int' ? bind.int(v) : bind.text(v);
+};
+const apInsert = (rec) => db.prepare(
+  `INSERT INTO approvals (${AP_FIELDS.map((f) => AP_COLS[f][0]).join(', ')}) VALUES (${AP_FIELDS.map(() => '?').join(', ')})`,
+).run(...AP_FIELDS.map((f) => apBind(f, rec[f])));
+
 export const Approvals = {
-  all: () => readJSON('approvals.json', []),
-  get: (id) => Approvals.all().find((a) => a.id === id) || null,
-  pending: () => Approvals.all().filter((a) => a.status === 'pending'),
+  all: () => db.prepare(`SELECT * FROM approvals ORDER BY created_at DESC, rowid DESC`).all().map(apRow),
+  get: (id) => apRow(db.prepare(`SELECT * FROM approvals WHERE id = ?`).get(id)),
+  pending: () => db.prepare(`SELECT * FROM approvals WHERE status = 'pending' ORDER BY created_at DESC, rowid DESC`).all().map(apRow),
   add(rec) {
     const full = { id: uid('ap'), status: 'pending', createdAt: new Date().toISOString(), reminded: false, ...rec };
-    // 상한을 넘으면 끝난 것부터 버린다 — 대기 중인 건은 밀려나지 않는다
-    const all = [full, ...Approvals.all()];
-    const isOpen = (a) => a.status === 'pending' || a.status === 'preparing';
-    const open = all.filter(isOpen);
-    const closed = all.filter((a) => !isOpen(a)).slice(0, Math.max(0, APPROVALS_MAX - open.length));
-    writeJSON('approvals.json', all.filter((a) => isOpen(a) || closed.includes(a)));
-    return full;
+    for (const k of Object.keys(full)) if (!AP_COLS[k]) throw new Error(`approvals: 모르는 필드 ${k}`);
+    transaction(db, () => {
+      apInsert(full);
+      // 상한을 넘으면 끝난 것부터 버린다 — 대기 중인 건은 밀려나지 않는다
+      const open = db.prepare(`SELECT COUNT(*) AS n FROM approvals WHERE status IN ('pending', 'preparing')`).get().n;
+      db.prepare(`DELETE FROM approvals WHERE status NOT IN ('pending', 'preparing') AND id NOT IN (
+        SELECT id FROM approvals WHERE status NOT IN ('pending', 'preparing') ORDER BY created_at DESC, rowid DESC LIMIT ?)`).run(Math.max(0, APPROVALS_MAX - open));
+    });
+    return Approvals.get(full.id);
   },
   update(id, patch) {
-    const list = Approvals.all();
-    const rec = list.find((a) => a.id === id);
-    if (!rec) return null;
-    Object.assign(rec, patch);
-    writeJSON('approvals.json', list);
-    return rec;
+    const keys = Object.keys(patch).filter((k) => k !== 'id');
+    for (const k of keys) if (!AP_COLS[k]) throw new Error(`approvals: 모르는 필드 ${k}`);
+    if (keys.length) {
+      const r = db.prepare(`UPDATE approvals SET ${keys.map((k) => `${AP_COLS[k][0]} = ?`).join(', ')} WHERE id = ?`)
+        .run(...keys.map((k) => apBind(k, patch[k])), id);
+      if (r.changes === 0) return null;
+    }
+    return Approvals.get(id);
   },
+  /**
+   * 결정을 원자적으로 잡는다: pending 인 동안만 한 번 성공한다. 같은 문장에서 resume_status 를 'resuming' 으로 바꿔
+   * "결정됨" 과 "재개 시작" 사이에 서버가 죽어도 기동 정리가 잡아낸다.
+   * @returns {boolean} 이 호출이 결정을 잡았는지
+   */
+  claimDecision(id, { status, decision, editedText, by, decidedAt }) {
+    const r = db.prepare(`UPDATE approvals
+      SET status = ?, decision = ?, edited_text = ?, decided_by = ?, decided_at = ?, resume_status = 'resuming', resume_started_at = ?, resume_error = NULL
+      WHERE id = ? AND status = 'pending'`)
+      .run(status, decision, bind.text(editedText), bind.text(by), decidedAt, decidedAt, id);
+    return r.changes === 1;
+  },
+  /** 실패한 재개를 다시 잡는다: 결정된 건이고 지금 재개 중이 아닐 때만 한 번 성공한다. */
+  claimResume(id) {
+    const r = db.prepare(`UPDATE approvals SET resume_status = 'resuming', resume_started_at = ?, resume_error = NULL
+      WHERE id = ? AND status IN ('approved', 'rejected', 'expired') AND (resume_status IS NULL OR resume_status = 'error')`)
+      .run(new Date().toISOString(), id);
+    return r.changes === 1;
+  },
+  /** 테스트용 — 전부 지운다 */
+  clearAll() { db.exec(`DELETE FROM approvals`); },
 };
+
+/* ---------- 기존 JSON 기록 → SQLite (처음 한 번) ---------- */
+migrateLegacyJson(db, DATA_DIR, {
+  'executions.json': (rows) => rows.forEach((r) => r?.id && execInsert(r)),
+  'processed.json': (rows) => rows.forEach((r) => r?.idempotency_key && db.prepare(
+    `INSERT OR REPLACE INTO processed_events (idempotency_key, source, event_type, status, first_seen_at, completed_at, attempts, locked_until, result_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(r.idempotency_key, bind.text(r.source), bind.text(r.event_type), ['pending', 'done', 'failed'].includes(r.status) ? r.status : 'failed',
+    r.first_seen_at || new Date(0).toISOString(), bind.text(r.completed_at), bind.int(r.attempts ?? 1), bind.text(r.locked_until), bind.text(r.result_ref))),
+  'dlq.json': (rows) => rows.forEach((r) => r?.id && db.prepare(
+    `INSERT OR REPLACE INTO dlq (id, workflow_id, workflow_name, node_id, node_kind, item_key, payload, error_code, error_msg, attempts, failed_at, replay_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(r.id, bind.text(r.workflow_id), bind.text(r.workflow_name), bind.text(r.node_id), bind.text(r.node_kind), bind.text(r.item_key), bind.json(r.payload),
+    String(r.error_code ?? 'UNKNOWN'), String(r.error_msg ?? ''), bind.int(r.attempts ?? 1), r.failed_at || new Date(0).toISOString(),
+    ['pending', 'replayed', 'dropped'].includes(r.replay_status) ? r.replay_status : 'pending')),
+  'approvals.json': (rows) => rows.forEach((r) => {
+    if (!r?.id) return;
+    const rec = {};
+    for (const f of AP_FIELDS) rec[f] = r[f] ?? (f === 'reminded' ? false : null);
+    if (!['preparing', 'pending', 'approved', 'rejected', 'expired', 'failed'].includes(rec.status)) rec.status = 'failed';
+    if (!rec.channel) rec.channel = 'telegram';
+    if (!rec.createdAt) rec.createdAt = new Date(0).toISOString();
+    db.prepare(`DELETE FROM approvals WHERE id = ?`).run(rec.id);
+    apInsert(rec);
+  }),
+});
 
 /* ---------- 사람 (specs/007) — 텔레그램 채팅 하나 = 한 사람, PC 화면 = owner ---------- */
 export const People = {

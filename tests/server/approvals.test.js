@@ -14,7 +14,7 @@ delete process.env.TELEGRAM_BOT_TOKEN;
 const { app } = await import('../../server/index.js');             // 브리지 설치
 const { execute } = await import('../../server/runtime.js');
 const { setApprovalAdapter, decide, retryResume, tick, recoverAtBoot } = await import('../../server/approvals.js');
-const { Approvals, Executions } = await import('../../server/store.js');
+const { Approvals, Executions, closeDb } = await import('../../server/store.js');
 
 // 가짜 텔레그램 — 보낸 것만 기록한다
 const fake = { sent: [], decided: [], reminded: [], ready: true, failSend: false, failRemind: false };
@@ -51,12 +51,13 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await new Promise((r) => server.close(r));
-  fs.rmSync(dataDir, { recursive: true, force: true });
+  closeDb();
+  try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch { /* 윈도우: 아직 잡힌 핸들 */ }
 });
 beforeEach(() => {
   fake.sent.length = 0; fake.decided.length = 0; fake.reminded.length = 0;
   fake.ready = true; fake.failSend = false; fake.failRemind = false;
-  fs.writeFileSync(path.join(dataDir, 'approvals.json'), '[]');       // 테스트마다 빈 저장소
+  Approvals.clearAll();                                              // 테스트마다 빈 저장소
 });
 
 describe('승인 요청 (멈춤)', () => {

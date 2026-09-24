@@ -43,7 +43,8 @@ Webhook 트리거 노드에서 `signature` 선택 (`none|slack|github|stripe|gen
 
 ### 멱등성 (중복 실행 방지)
 - 키 규칙: provider 이벤트 id 우선(`X-GitHub-Delivery`·`body.id`·`event_id`), 없으면 **body 해시** (시각은 키에 넣지 않음 — 재시도 시 키가 바뀌면 멱등성이 깨지므로)
-- 상태 저장: `idempotency_key · status(pending/done/failed) · attempts · locked_until · result_ref`
+- 상태 저장: SQLite `processed_events` 테이블 — `idempotency_key`(PRIMARY KEY) · `status(pending/done/failed)` · `attempts` · `locked_until` · `result_ref`
+- 잡기(claim)는 `INSERT … ON CONFLICT DO UPDATE … WHERE status != 'done' AND (status != 'pending' OR locked_until <= now)` **한 문장**. "읽고 나서 쓰는" 틈이 없어서 같은 키가 동시에 100번 와도 하나만 잡는다 (`tests/server/store.sqlite.test.js`)
 - 중복 요청은 실행하지 않고 `{deduped:true, reason:"already_done"}` 반환. 처리 중이면 `in_progress`.
 - 조회: `GET /api/idempotency`
 

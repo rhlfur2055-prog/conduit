@@ -63,6 +63,14 @@ Webhook 트리거 노드에서 `signature` 선택 (`none|slack|github|stripe|gen
 - 화면에서는 사이드바 **설정**에 같은 키를 넣으면 됩니다 (이 브라우저에만 저장).
 - 구현: `server/auth.js`, 테스트: `tests/server/auth.test.js` (실제 HTTP 요청으로 401·403·200 확인)
 
+### 자동 승인 게이트 (`CONDUIT_AI_GATE`)
+- 규칙: 발송 노드(`sends`)로 들어오는 경로 위에 모델 출력 노드(`llm`)가 있고 그 사이에 승인 노드(`approvalRequest`)가 없으면, 실행기가 발송 노드 앞에서 멈추고 `approval` 연동으로 사람에게 묻는다 (`gate: 'auto'` 로 저장). 판정은 `src/engine/gates.ts` — 데이터가 아니라 그래프를 본다.
+- 재개: 승인이면 발송 노드를 실행하되 들어오는 아이템마다 `approval` 을 붙인다(승인 노드와 같은 모양). 거절·만료면 발송 노드를 건너뛴다. 위쪽 노드는 스냅샷으로 주입돼 다시 돌지 않는다. 한 체인에서 이미 승인된 발송 노드 아래의 두 번째 발송은 다시 묻지 않는다.
+- 발송으로 보는 것: 텔레그램 · Slack · Gmail · Notion · HTTP 요청(GET 제외) · MCP 도구 호출(도구 이름이 있을 때). 모델 출력으로 보는 것: AI · 구조화 추출 · 에이전트 · 루프 · 소크라테스식 읽기 · 화면 이해.
+- 채널이 없으면 조용히 통과하지 않고 노드 오류. 브라우저(브리지 없음)에서는 시뮬레이션 대기로만 표시.
+- 설계 때: `POST /api/workflows/lint` `{ nodes, edges }` → 보호되지 않은 경로 목록(노드 이름 포함).
+- 기본 `auto`. `CONDUIT_AI_GATE=off` 로만 끈다. 테스트: `tests/engine/gates.test.js`, `tests/server/approvals.test.js`(자동 게이트 절)
+
 ### 서버에서의 코드 실행 (`CONDUIT_ALLOW_CODE`)
 
 서버에서 사용자 JS가 실행되는 입구는 코드 노드만이 아닙니다. **`{{ }}` 표현식**도 JS로 평가되고(`{{ process.env.ANTHROPIC_API_KEY }}` 한 줄로 비밀값을 읽을 수 있음), **AI 에이전트의 `run_code` 도구**는 모델이 고른 코드를 실행합니다. 하나만 막으면 나머지로 같은 일을 할 수 있어서, 스위치 하나로 셋을 함께 끕니다.

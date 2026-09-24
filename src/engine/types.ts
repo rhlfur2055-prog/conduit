@@ -83,6 +83,10 @@ export interface NodeDefinition {
   backend?: boolean;
   /** 'batch' 면 아이템 배열 전체를 한 번에 받는다 (Merge/Aggregate/Sort…). 기본은 아이템마다 반복. */
   mode?: 'item' | 'batch';
+  /** 출력에 모델이 만든 값이 들어 있다 — 자동 승인 게이트의 출발점 */
+  llm?: boolean;
+  /** 밖으로 무언가를 보낸다(메시지·메일·POST·외부 도구) — 자동 승인 게이트의 대상. 함수면 해석된 params 로 판정 */
+  sends?: boolean | ((params: NodeParams) => boolean);
   inputs: string[];
   outputs: string[];
   defaults: NodeParams;
@@ -97,12 +101,30 @@ export type RunStatus = 'done' | 'skip' | 'error' | 'failedContinue' | 'waiting'
 /** 화면에 보이는 상태 — 실행 중·재시도 중 포함 */
 export type NodeStatus = RunStatus | 'running' | 'retrying';
 
-/** 승인 대기 신호. 노드가 { __wait: WaitRequest } 를 내면 엔진이 그 노드에서 멈춘다. */
+/** 승인 대기 신호. 노드가 { __wait: WaitRequest } 를 내면 엔진이 그 노드에서 멈춘다. 자동 게이트는 gate:'auto'. */
 export interface WaitRequest {
   approvalId: string | null;
   channel?: string;
   simulated?: boolean;
   note?: string;
+  gate?: 'node' | 'auto';
+}
+
+/** 승인 결정이 재개 실행에 실어 보내는 정보 — 게이트를 통과한 아이템마다 approval 필드로 붙는다 */
+export interface ApprovalInfo {
+  id: string;
+  decision: 'approve' | 'reject' | 'expired';
+  text?: string;
+  edited?: boolean;
+  by?: string;
+  at?: string;
+  requestedAt?: string;
+}
+
+/** 자동 게이트의 재개 지시: 승인된 발송 노드는 실행하고(아이템에 approval 을 붙여), 거절·만료된 노드는 건너뛴다 */
+export interface GateDecisions {
+  approved?: Record<string, ApprovalInfo>;
+  rejected?: Record<string, ApprovalInfo>;
 }
 
 /** 엔진이 노드마다 남기는 결과. 승인 대기 스냅샷은 이 Map 을 그대로 저장한다. */
@@ -153,8 +175,10 @@ export interface RunFlowOptions {
   onAgentStep?: (nodeId: string, step: unknown) => void;
   onDeadLetter?: (entry: DeadLetter) => void;
   onItemProgress?: (nodeId: string, completed: number, total: number) => void;
-  /** 서버가 넘기는 실행 정책. 브라우저(내 컴퓨터)에서는 생략 → 전부 허용. */
-  policy?: { allowCode?: boolean };
+  /** 서버가 넘기는 실행 정책. 브라우저(내 컴퓨터)에서는 생략 → 코드 허용 · 자동 게이트 켜짐. */
+  policy?: { allowCode?: boolean; aiGate?: 'auto' | 'off' };
+  /** 자동 게이트의 승인/거절 결정 (승인 재개 실행에서만) */
+  gates?: GateDecisions;
   /** 실행 메타(workflowId 등) — 노드 ctx.$meta 로 전달 */
   meta?: Record<string, unknown>;
 }

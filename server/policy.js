@@ -17,7 +17,15 @@ export function codeExecutionAllowed(env = process.env) {
   return !env.CONDUIT_API_KEY;
 }
 
+/**
+ * 자동 승인 게이트 — AI 출력이 승인 없이 발송 노드로 흘러들면 실행기가 그 앞에서 멈추고 사람에게 묻는다.
+ * 기본 켜짐. CONDUIT_AI_GATE=off 로만 끈다 (끄는 쪽이 명시적이어야 한다).
+ */
+export function aiGateMode(env = process.env) {
+  return /^(off|0|false)$/i.test(String(env.CONDUIT_AI_GATE ?? '').trim()) ? 'off' : 'auto';
+}
+
 /** runFlow 에 넘길 정책 객체 — 요청마다 새로 읽어 재시작 없이 반영된다 */
 export function currentPolicy(env = process.env) {
-  return { allowCode: codeExecutionAllowed(env) };
+  return { allowCode: codeExecutionAllowed(env), aiGate: aiGateMode(env) };
 }

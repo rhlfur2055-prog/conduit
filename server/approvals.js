@@ -38,7 +38,7 @@ const STATUS = Object.freeze({ approve: 'approved', reject: 'rejected', expired:
 const nowISO = () => new Date().toISOString();
 
 /** 승인 노드(run)에서 호출 — 기록만 만들고 { waiting } 을 돌려준다. 메시지는 finalizeApproval 이 보낸다. */
-export async function requestApproval({ channel = 'telegram', chatId, title, text, remindAfterMin, expireAfterMin, item, _ctx = {} }) {
+export async function requestApproval({ channel = 'telegram', chatId, title, text, remindAfterMin, expireAfterMin, item, gate = 'node', _ctx = {} }) {
   const ad = adapters[channel];
   if (!ad) return { error: `지원하지 않는 승인 채널: ${channel}` };
   if (!ad.ready()) return { error: `${channel} 승인 채널이 설정되지 않았습니다 (TELEGRAM_BOT_TOKEN)` };
@@ -56,6 +56,7 @@ export async function requestApproval({ channel = 'telegram', chatId, title, tex
     channel, chatId: String(chat), title: String(title || '승인 요청'), text: String(text ?? ''), item: item ?? {},
     nodeId, workflowId: meta.workflowId ?? null, workflowName: meta.workflowName ?? null, trigger: meta.trigger ?? null,
     flow: { nodes: flow.nodes, edges: flow.edges }, snapshot: {},
+    gate: gate === 'auto' ? 'auto' : 'node',
     remindAt: new Date(now + remind * 60000).toISOString(),
     expireAt: new Date(now + expire * 60000).toISOString(),
     resumeStatus: null,
@@ -87,13 +88,18 @@ const firstError = (statuses = {}) => Object.values(statuses).find((s) => s.stat
 /** 스냅샷 + 결정을 seed 로 주입해 같은 워크플로를 다시 실행 */
 async function resume(rec, { decision, editedText, by, at }) {
   const approval = { id: rec.id, decision, text: editedText || rec.text, edited: !!editedText, by, at, requestedAt: rec.createdAt };
-  const seed = { ...(rec.snapshot || {}), [rec.nodeId]: { [PORT[decision]]: [{ ...(rec.item || {}), approval }] } };
+  // 승인 노드: 결정 포트로 아이템을 주입한다. 자동 게이트: 발송 노드 자체를 승인(실행)하거나 거절(건너뜀)한다.
+  const auto = rec.gate === 'auto';
+  const seed = auto
+    ? { ...(rec.snapshot || {}) }
+    : { ...(rec.snapshot || {}), [rec.nodeId]: { [PORT[decision]]: [{ ...(rec.item || {}), approval }] } };
+  const gates = auto ? (decision === 'approve' ? { approved: { [rec.nodeId]: approval } } : { rejected: { [rec.nodeId]: approval } }) : {};
   let result = null;
   let error = null;
   try {
     result = await execute(
       { id: rec.workflowId, name: rec.workflowName || '(승인 재개)', nodes: rec.flow.nodes, edges: rec.flow.edges },
-      { seed, trigger: 'approval' },
+      { seed, trigger: 'approval', gates },
     );
   } catch (e) {
     error = e.message;

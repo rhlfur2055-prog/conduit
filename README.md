@@ -57,6 +57,8 @@ Resume log — `●` is *injected*, `✔` is *executed*:
 ⤵ reject handler   — skipped (no input)
 ```
 
+**Approval by policy, not by wiring.** Placing an approval node is a choice, and a forgotten node means an AI draft goes out unreviewed. So the engine also enforces it: if a *sending* node (Telegram, Slack, Gmail, Notion, non-GET HTTP, MCP tool call) is reachable from a *model-output* node (AI, extract, agent, Socratic reading, screen understanding) with no approval node in between, the run **stops in front of the send and asks a human** — same buttons, same resume, same crash safety. The decision is made on the graph, not on data, so a code node that strips fields cannot slip past it, and `POST /api/workflows/lint` reports unguarded paths before you save. Default on; `CONDUIT_AI_GATE=off` disables it (turning it off has to be explicit).
+
 Design decisions that make this safe rather than merely convenient:
 
 - **Two-phase pause.** While the node runs, only a record exists (`preparing`). The snapshot is committed and the message sent *after* execution finishes (`pending`). No button can be pressed mid-run, and no node runs twice on resume.
@@ -68,6 +70,7 @@ Design decisions that make this safe rather than merely convenient:
 | | |
 |---|---|
 | Node | `approvalRequest` — approved / rejected / expired ports · one reminder · expiry |
+| Policy | `src/engine/gates.ts` — unguarded AI→send paths become an automatic gate at run time; `POST /api/workflows/lint` lists them at design time |
 | Channel | Telegram buttons, long-polling (no public URL), only the originating chat's decision is accepted |
 | API | `GET /api/approvals` · `POST /api/approvals/:id/decide` (API-key auth) |
 | Extend | another channel is one adapter (`setApprovalAdapter`) |

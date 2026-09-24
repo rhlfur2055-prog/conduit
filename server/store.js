@@ -238,7 +238,7 @@ const AP_COLS = {
   id: ['id', 'text'], status: ['status', 'text'], channel: ['channel', 'text'], chatId: ['chat_id', 'text'],
   title: ['title', 'text'], text: ['text', 'text'], item: ['item', 'json'],
   nodeId: ['node_id', 'text'], workflowId: ['workflow_id', 'text'], workflowName: ['workflow_name', 'text'], trigger: ['trigger', 'text'],
-  flow: ['flow', 'json'], snapshot: ['snapshot', 'json'],
+  flow: ['flow', 'json'], snapshot: ['snapshot', 'json'], gate: ['gate', 'text'],
   createdAt: ['created_at', 'text'], remindAt: ['remind_at', 'text'], expireAt: ['expire_at', 'text'], reminded: ['reminded', 'bool'],
   messageId: ['message_id', 'int'], error: ['error', 'text'],
   decision: ['decision', 'text'], editedText: ['edited_text', 'text'], by: ['decided_by', 'text'], decidedAt: ['decided_at', 'text'],
@@ -268,7 +268,7 @@ export const Approvals = {
   get: (id) => apRow(db.prepare(`SELECT * FROM approvals WHERE id = ?`).get(id)),
   pending: () => db.prepare(`SELECT * FROM approvals WHERE status = 'pending' ORDER BY created_at DESC, rowid DESC`).all().map(apRow),
   add(rec) {
-    const full = { id: uid('ap'), status: 'pending', createdAt: new Date().toISOString(), reminded: false, ...rec };
+    const full = { id: uid('ap'), status: 'pending', createdAt: new Date().toISOString(), reminded: false, gate: 'node', ...rec };
     for (const k of Object.keys(full)) if (!AP_COLS[k]) throw new Error(`approvals: 모르는 필드 ${k}`);
     transaction(db, () => {
       apInsert(full);
@@ -331,6 +331,7 @@ migrateLegacyJson(db, DATA_DIR, {
     if (!['preparing', 'pending', 'approved', 'rejected', 'expired', 'failed'].includes(rec.status)) rec.status = 'failed';
     if (!rec.channel) rec.channel = 'telegram';
     if (!rec.createdAt) rec.createdAt = new Date(0).toISOString();
+    if (rec.gate !== 'auto') rec.gate = 'node';
     db.prepare(`DELETE FROM approvals WHERE id = ?`).run(rec.id);
     apInsert(rec);
   }),

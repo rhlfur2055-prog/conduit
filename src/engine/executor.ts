@@ -2,7 +2,8 @@
 // 실행 엔진 — 위상 정렬 → 노드별 실행. 표현식 해석 + 입/출력 캡처(NDV).
 // ============================================================
 
-import { NODE_TYPES } from './nodeTypes.ts';
+import { NODE_TYPES, callIntegration } from './nodeTypes.ts';
+import { nodeSends, unguardedSources } from './gates.ts';
 import { resolveParams } from './expr.ts';
 import { profileFor, isRetryable, backoffMs } from './retry.ts';
 import { toItems, emptyToUndefined, firstItem, countItems, chunk } from './items.ts';
@@ -10,6 +11,20 @@ import type {
   FlowNode, FlowEdge, Item, NodeContext, NodeInputs, NodeOutput, NodeResult,
   PortOutputs, RunError, RunFlowOptions, RunStatus, WaitRequest,
 } from './types.ts';
+
+/** 자동 게이트가 사람에게 보여 줄 본문 — AI 노드가 남긴 대표 필드가 있으면 그것, 없으면 아이템 전체(잘라서) */
+const AI_TEXT_FIELDS = ['draft', 'aiText', 'agentResult', 'refined', 'text', 'extracted', 'reading', 'screen'];
+function gatePreview(items: Item[]): string {
+  const first = items[0] ?? {};
+  for (const f of AI_TEXT_FIELDS) {
+    const v = first[f];
+    if (v === undefined || v === null || v === '') continue;
+    const s = typeof v === 'string' ? v : JSON.stringify(v);
+    return items.length > 1 ? `${s}\n\n(외 ${items.length - 1}건)` : s;
+  }
+  const s = JSON.stringify(first);
+  return (items.length > 1 ? `${s}\n\n(외 ${items.length - 1}건)` : s).slice(0, 1500);
+}
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -57,10 +72,13 @@ export async function runFlow(
   edges: FlowEdge[],
   {
     onStatus = () => {}, onLog = () => {}, seed = {}, onAgentStep = () => {},
-    onDeadLetter = () => {}, onItemProgress = () => {}, policy = {}, meta = {},
+    onDeadLetter = () => {}, onItemProgress = () => {}, policy = {}, meta = {}, gates = {},
   }: RunFlowOptions = {},
 ): Promise<Map<string, NodeResult>> {
   const allowCode = policy.allowCode !== false;
+  const gateMode = policy.aiGate ?? 'auto';
+  // 이 실행에서 이미 사람이 승인한 발송 노드 — 그 아래 경로는 다시 묻지 않는다
+  const guarded = new Set(Object.keys(gates.approved ?? {}));
   const results = new Map<string, NodeResult>();
   onLog({ kind: 'info', msg: '워크플로 실행 시작…' });
 
@@ -118,6 +136,46 @@ export async function runFlow(
       onStatus(node.id, 'skip');
       onLog({ kind: 'skip', msg: `⤵ ${def.title} — 건너뜀 (입력 없음)` });
       continue;
+    }
+
+    // ---- 자동 승인 게이트: AI 출력이 승인 없이 발송 노드로 흘러들면 여기서 멈춘다 (정책 · src/engine/gates.ts) ----
+    const rejectedGate = gates.rejected?.[node.id];
+    if (rejectedGate) {
+      results.set(node.id, { status: 'skip', output: {}, input: undefined });
+      onStatus(node.id, 'skip');
+      onLog({ kind: 'skip', msg: `⤵ ${def.title} — 자동 게이트에서 ${rejectedGate.decision === 'expired' ? '만료' : '거절'}됨${rejectedGate.by ? ` (${rejectedGate.by})` : ''} · 보내지 않음` });
+      continue;
+    }
+    const approvedGate = gates.approved?.[node.id];
+    if (approvedGate) {
+      // 승인된 발송: 들어오는 아이템마다 approval 을 달아 준다 (승인 노드가 하는 것과 같은 모양)
+      for (const port of Object.keys(inputs)) inputs[port] = inputs[port].map((it) => ({ ...it, approval: approvedGate }));
+    } else if (gateMode !== 'off' && nodeSends(def, node.data.params)) {
+      const sources = unguardedSources(node.id, nodes, edges, guarded);
+      if (sources.length) {
+        const items: Item[] = inputs.main ?? inputs.input1 ?? Object.values(inputs)[0] ?? [{}];
+        const sourceTitles = sources.map((id) => NODE_TYPES[nodes.find((n) => n.id === id)?.data.kind ?? '']?.title ?? id).join(', ');
+        const r = await callIntegration('approval', {
+          channel: 'telegram', chatId: '', title: `자동 승인: ${def.title}`, text: gatePreview(items),
+          item: { items }, gate: 'auto',
+          _ctx: { results, flow: { nodes, edges }, meta, nodeId: node.id },
+        });
+        let wait: WaitRequest | null = null;
+        if (r?.waiting) wait = { approvalId: r.approvalId, channel: r.channel, gate: 'auto' };
+        else if (r?.simulated) wait = { approvalId: null, simulated: true, note: r.note, gate: 'auto' };
+        if (wait) {
+          blocked.add(node.id);
+          results.set(node.id, { status: 'waiting', output: {}, input: items, attempts: 0, wait: [wait] });
+          onStatus(node.id, 'waiting', { input: items, wait: [wait] });
+          onLog({ kind: 'skip', msg: `⏸ ${def.title} — 자동 승인 게이트: ${sourceTitles} 의 출력이 밖으로 나가기 전에 사람이 봅니다 (${wait.approvalId || '시뮬레이션'})` });
+          continue;
+        }
+        const msg = `AI 출력이 밖으로 나가는 경로에는 승인이 필요합니다 (${sourceTitles} → ${def.title}). ${r?.error || '승인 채널이 없습니다'} — 승인 채널을 연결하거나 CONDUIT_AI_GATE=off`;
+        results.set(node.id, { status: 'error', output: {}, input: items, attempts: 0 });
+        onStatus(node.id, 'error', { error: msg, input: items });
+        onLog({ kind: 'err', msg: `✖ ${def.title} 차단: ${msg}` });
+        continue;
+      }
     }
 
     // 주 입력 아이템들 (트리거는 입력이 없으므로 더미 1개로 1회 실행)

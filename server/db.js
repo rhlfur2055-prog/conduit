@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS approvals (
   trigger              TEXT,
   flow                 TEXT,            -- JSON { nodes, edges } · 재개가 끝나면 NULL
   snapshot             TEXT,            -- JSON { nodeId: outputs } · 재개가 끝나면 NULL
+  gate                 TEXT NOT NULL DEFAULT 'node' CHECK (gate IN ('node','auto')),   -- node: 승인 노드 · auto: 정책이 발송 노드 앞에 세운 게이트
   created_at           TEXT NOT NULL,
   remind_at            TEXT,
   expire_at            TEXT,
@@ -97,7 +98,14 @@ export function openDb(dataDir) {
   db.exec('PRAGMA synchronous = NORMAL');
   db.exec('PRAGMA busy_timeout = 5000');
   db.exec(SCHEMA);
+  migrateSchema(db);
   return db;
+}
+
+/** 스키마 변경 — 있는 DB 에 열을 더한다. CREATE TABLE IF NOT EXISTS 는 기존 테이블을 건드리지 않으므로 여기서 맞춘다. */
+function migrateSchema(db) {
+  const cols = new Set(db.prepare('PRAGMA table_info(approvals)').all().map((c) => c.name));
+  if (!cols.has('gate')) db.exec("ALTER TABLE approvals ADD COLUMN gate TEXT NOT NULL DEFAULT 'node' CHECK (gate IN ('node','auto'))");
 }
 
 /** BEGIN IMMEDIATE … COMMIT. 안에서 던지면 ROLLBACK 하고 다시 던진다. */
@@ -142,9 +150,13 @@ export function migrateLegacyJson(db, dataDir, importers) {
       continue;
     }
     if (!Array.isArray(rows)) continue;
-    transaction(db, () => importRows(rows));
+    // 파일을 먼저 치우고(이름 변경) 그다음 넣는다 — 두 프로세스가 같은 폴더를 동시에 열어도 한쪽만 옮긴다
     const backup = `${file}.migrated-${new Date().toISOString().replace(/[:.]/g, '-')}`;
-    fs.renameSync(file, backup);
+    try { fs.renameSync(file, backup); } catch (e) {
+      if (e.code === 'ENOENT') continue;               // 다른 프로세스가 먼저 옮겼다
+      throw e;
+    }
+    transaction(db, () => importRows(rows));
     moved.push(`${name}(${rows.length}건)`);
   }
   if (moved.length) console.log(`[db] JSON 기록을 SQLite 로 옮김: ${moved.join(' · ')}`);

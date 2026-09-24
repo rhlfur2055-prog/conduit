@@ -19,7 +19,7 @@ The answer runs through the whole codebase:
 | | |
 |---|---|
 | **What** | Workflow engine with a human-approval gate, a verification layer for LLM output, and MCP in both directions (personal project, Aug 2026 –) |
-| **Stack** | Node.js · Express / React · React Flow · Vite / Docker · GitHub Actions |
+| **Stack** | TypeScript (engine core, strict) · JavaScript (server, UI) / Node.js · Express / React · React Flow · Vite / Docker · GitHub Actions |
 | **Size** | ~11,000 lines (engine + server + UI) · 45 node types |
 | **Tests** | **428 Vitest tests** + a **33-step end-to-end check** that drives a real server process over HTTP |
 | **Brain** | **No API key required.** If [Ollama](https://ollama.com) is running, Conduit uses the model on your PC and nothing leaves your machine. Add a Claude key only if you want it. |
@@ -71,7 +71,7 @@ Design decisions that make this safe rather than merely convenient:
 | Channel | Telegram buttons, long-polling (no public URL), only the originating chat's decision is accepted |
 | API | `GET /api/approvals` · `POST /api/approvals/:id/decide` (API-key auth) |
 | Extend | another channel is one adapter (`setApprovalAdapter`) |
-| Code | `server/approvals.js` · `server/telegram.js` · `src/engine/executor.js` (waiting state) |
+| Code | `server/approvals.js` · `server/telegram.js` · `src/engine/executor.ts` (waiting state) |
 
 ---
 

@@ -20,7 +20,7 @@ n8n / Make 같은 **노드 기반 워크플로 엔진**을 직접 만들었습�
 | | |
 |---|---|
 | **무엇** | 사람 승인 게이트 + LLM 출력 검증층 + MCP 양방향을 갖춘 워크플로 엔진 (개인 프로젝트, 2026.08 ~) |
-| **스택** | Node.js · Express / React · React Flow · Vite / Docker · GitHub Actions |
+| **스택** | TypeScript(엔진 코어, strict) · JavaScript(서버·화면) / Node.js · Express / React · React Flow · Vite / Docker · GitHub Actions |
 | **규모** | 엔진+서버+화면 약 11,000줄 · 노드 45종 |
 | **테스트** | **Vitest 428개** + 진짜 서버 프로세스를 HTTP로만 조작하는 **끝까지 점검 33단계** |
 | **두뇌** | **API 키 없이 됩니다.** [Ollama](https://ollama.com)가 켜져 있으면 내 PC 모델을 쓰고, 내 컴퓨터 밖으로 아무것도 나가지 않습니다. Claude 키는 원할 때만. |
@@ -71,7 +71,7 @@ AI가 초안까지 쓰고, 발송은 사람을 기다립니다. 승인하면 **�
 | 채널 | 텔레그램 버튼 · 롱폴링이라 공개 URL 불필요 · 보낸 채팅의 결정만 수락 |
 | API | `GET /api/approvals` · `POST /api/approvals/:id/decide` (API 키 인증) |
 | 확장 | 다른 채널은 어댑터 하나(`setApprovalAdapter`)로 붙음 |
-| 구현 | `server/approvals.js` · `server/telegram.js` · `src/engine/executor.js`(waiting) |
+| 구현 | `server/approvals.js` · `server/telegram.js` · `src/engine/executor.ts`(waiting) |
 
 ---
 

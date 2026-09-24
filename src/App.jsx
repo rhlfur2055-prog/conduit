@@ -13,8 +13,8 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { NODE_TYPES } from './engine/nodeTypes.js';
-import { runFlow } from './engine/executor.js';
+import { NODE_TYPES } from './engine/nodeTypes.ts';
+import { runFlow } from './engine/executor.ts';
 import { FlowActions } from './flowActions.js';
 import { api, authFetch, getApiKey, setApiKey } from './api.js';
 import { Icon } from './ui/icons.jsx';

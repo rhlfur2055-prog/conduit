@@ -1,5 +1,5 @@
 import { useMemo, useRef, useEffect, useState } from 'react';
-import { NODE_TYPES, PALETTE_GROUPS } from '../engine/nodeTypes.js';
+import { NODE_TYPES, PALETTE_GROUPS } from '../engine/nodeTypes.ts';
 import { api } from '../api.js';
 import { Icon } from '../ui/icons.jsx';
 

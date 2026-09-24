@@ -13,7 +13,7 @@ delete process.env.TELEGRAM_BOT_TOKEN;
 const T = await import('../../server/templates.js');
 const A = await import('../../server/assistant.js');
 const { Workflows, Memory, PendingActions, Settings } = await import('../../server/store.js');
-const { NODE_TYPES } = await import('../../src/engine/nodeTypes.js');
+const { NODE_TYPES } = await import('../../src/engine/nodeTypes.ts');
 const ch = await import('../../server/telegramChannel.js');
 
 const registered = [];

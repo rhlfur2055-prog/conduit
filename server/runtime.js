@@ -3,7 +3,7 @@
 // 라우트(웹훅·MCP·DLQ 재실행 등)가 모두 이 execute() 를 거친다.
 // ============================================================
 import cron from 'node-cron';
-import { runFlow } from '../src/engine/executor.js';
+import { runFlow } from '../src/engine/executor.ts';
 import { Workflows, Executions, DLQ } from './store.js';
 import { finalizeApproval } from './approvals.js';
 import { currentPolicy } from './policy.js';
@@ -60,8 +60,11 @@ export async function execute(workflow, { seed = {}, trigger = 'manual' } = {}) 
   }));
   const edges = workflow.edges || [];
 
+  /** @type {import('../src/engine/types.ts').LogEntry[]} */
   const logs = [];
+  /** @type {Record<string, { status: import('../src/engine/types.ts').NodeStatus } & import('../src/engine/types.ts').StatusDetail>} */
   const statuses = {};
+  /** @type {Map<string, import('../src/engine/types.ts').NodeResult>} — 승인 대기 스냅샷의 재료 */
   const results = await runFlow(nodes, edges, {
     seed,
     policy: currentPolicy(),

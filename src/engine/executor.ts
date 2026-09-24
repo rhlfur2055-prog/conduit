@@ -2,30 +2,34 @@
 // 실행 엔진 — 위상 정렬 → 노드별 실행. 표현식 해석 + 입/출력 캡처(NDV).
 // ============================================================
 
-import { NODE_TYPES } from './nodeTypes.js';
-import { resolveParams } from './expr.js';
-import { profileFor, isRetryable, backoffMs } from './retry.js';
-import { toItems, emptyToUndefined, firstItem, countItems, chunk } from './items.js';
+import { NODE_TYPES } from './nodeTypes.ts';
+import { resolveParams } from './expr.ts';
+import { profileFor, isRetryable, backoffMs } from './retry.ts';
+import { toItems, emptyToUndefined, firstItem, countItems, chunk } from './items.ts';
+import type {
+  FlowNode, FlowEdge, Item, NodeContext, NodeInputs, NodeOutput, NodeResult,
+  PortOutputs, RunError, RunFlowOptions, RunStatus, WaitRequest,
+} from './types.ts';
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-function topoSort(nodes, edges) {
-  const indeg = new Map();
-  const adj = new Map();
+function topoSort(nodes: FlowNode[], edges: FlowEdge[]): FlowNode[] {
+  const indeg = new Map<string, number>();
+  const adj = new Map<string, string[]>();
   nodes.forEach((n) => { indeg.set(n.id, 0); adj.set(n.id, []); });
   edges.forEach((e) => {
     if (adj.has(e.source) && indeg.has(e.target)) {
-      adj.get(e.source).push(e.target);
-      indeg.set(e.target, indeg.get(e.target) + 1);
+      adj.get(e.source)!.push(e.target);
+      indeg.set(e.target, indeg.get(e.target)! + 1);
     }
   });
   const queue = nodes.filter((n) => indeg.get(n.id) === 0).map((n) => n.id);
-  const order = [];
+  const order: FlowNode[] = [];
   while (queue.length) {
-    const id = queue.shift();
-    order.push(nodes.find((n) => n.id === id));
-    for (const to of adj.get(id)) {
-      indeg.set(to, indeg.get(to) - 1);
+    const id = queue.shift()!;
+    order.push(nodes.find((n) => n.id === id)!);
+    for (const to of adj.get(id)!) {
+      indeg.set(to, indeg.get(to)! - 1);
       if (indeg.get(to) === 0) queue.push(to);
     }
   }
@@ -33,24 +37,34 @@ function topoSort(nodes, edges) {
   return order;
 }
 
-const truncate = (s, n) => (s && s.length > n ? s.slice(0, n) + '…' : s);
+const truncate = (s: string, n: number) => (s && s.length > n ? s.slice(0, n) + '…' : s);
 const nowISO = () => new Date().toISOString();
 
 // 사용자 JS 를 그대로 실행하는 노드 — 정책상 코드 실행이 꺼져 있으면 돌리지 않는다
 const CODE_NODES = new Set(['code']);
 
+/** 아이템 하나의 실행 결과 — 성공이면 출력, 실패면 오류와 그 아이템 */
+type Settled =
+  | { ok: true; output: NodeOutput | undefined }
+  | { ok: false; err: RunError; item: Item; index: number };
+
 /**
- * @param {object} [opts]
- * @param {{ allowCode?: boolean }} [opts.policy] 서버가 넘기는 실행 정책. 브라우저(내 컴퓨터)에서는 생략 → 전부 허용.
- * @param {object} [opts.meta] 실행 메타(workflowId 등) — 노드 ctx.$meta 로 전달
- * @returns Map<nodeId, { status: 'done'|'skip'|'error'|'failedContinue'|'waiting', output, input }>
+ * 워크플로 실행. 노드마다 NodeResult 를 남긴 Map 을 돌려준다.
+ * 승인 대기(waiting)에서 멈춘 실행은 그 Map 을 스냅샷으로 저장했다가 seed 로 주입해 재개한다.
  */
-export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () => {}, seed = {}, onAgentStep = () => {}, onDeadLetter = () => {}, onItemProgress = () => {}, policy = {}, meta = {} } = {}) {
+export async function runFlow(
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  {
+    onStatus = () => {}, onLog = () => {}, seed = {}, onAgentStep = () => {},
+    onDeadLetter = () => {}, onItemProgress = () => {}, policy = {}, meta = {},
+  }: RunFlowOptions = {},
+): Promise<Map<string, NodeResult>> {
   const allowCode = policy.allowCode !== false;
-  const results = new Map();
+  const results = new Map<string, NodeResult>();
   onLog({ kind: 'info', msg: '워크플로 실행 시작…' });
 
-  let order;
+  let order: FlowNode[];
   try {
     order = topoSort(nodes, edges);
   } catch {
@@ -59,7 +73,7 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
   }
 
   const started = nowISO();
-  const blocked = new Set();   // 사람 승인 대기 중인 노드와 그 아래 노드들
+  const blocked = new Set<string>();   // 사람 승인 대기 중인 노드와 그 아래 노드들
 
   for (const node of order) {
     const def = NODE_TYPES[node.data.kind];
@@ -68,8 +82,8 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
     // 외부 주입(웹훅/스케줄 페이로드) — 실행하지 않고 주어진 출력을 사용
     if (seed && seed[node.id] !== undefined) {
       const raw = seed[node.id];
-      const output = {};
-      for (const [port, value] of Object.entries(raw || {})) output[port] = emptyToUndefined(toItems(value));
+      const output: PortOutputs = {};
+      for (const [port, value] of Object.entries(raw || {})) output[port] = emptyToUndefined(toItems<Item>(value as Item | Item[]));
       results.set(node.id, { status: 'done', output, input: undefined });
       onStatus(node.id, 'done', { output, input: undefined });
       onLog({ kind: 'ok', msg: `● ${def.title} — ${countItems(output.main)}건 주입` });
@@ -86,7 +100,7 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
     }
 
     // 입력 수집 — 모든 포트 값은 아이템 배열로 정규화된다
-    const inputs = {};
+    const inputs: Record<string, Item[]> = {};
     let hasIncoming = false;
     let gotData = false;
     for (const port of def.inputs) {
@@ -107,7 +121,7 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
     }
 
     // 주 입력 아이템들 (트리거는 입력이 없으므로 더미 1개로 1회 실행)
-    const primaryItems = inputs.main ?? inputs.input1 ?? Object.values(inputs)[0] ?? [{}];
+    const primaryItems: Item[] = inputs.main ?? inputs.input1 ?? Object.values(inputs)[0] ?? [{}];
 
     if (!allowCode && CODE_NODES.has(node.data.kind)) {
       const msg = '이 서버에서는 코드 실행이 꺼져 있습니다 (CONDUIT_ALLOW_CODE)';
@@ -127,14 +141,22 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
     const batchSize = Math.max(0, Number(node.data.params?._batchSize) || 0);
     const batchDelay = Math.max(0, Number(node.data.params?._batchDelayMs) || 0);
 
+    const makeCtx = (item: Item, index: number): NodeContext => ({
+      $json: item ?? {}, $items: primaryItems, $index: index, $now: started,
+      $results: results, $flow: { nodes, edges }, $meta: meta, $nodeId: node.id,
+      safeExpressions: !allowCode,
+      onAgentStep: (step) => onAgentStep(node.id, step),
+    });
+
     /** 재시도를 감싼 단일 실행 */
-    const runWithRetry = async (runInputs, ctx) => {
+    const runWithRetry = async (runInputs: NodeInputs, ctx: NodeContext): Promise<{ output: NodeOutput | undefined; attempts: number }> => {
       let attempt = 0;
       for (;;) {
         try {
           const resolved = resolveParams(node.data.params, ctx);
           return { output: await def.run(runInputs, resolved, ctx), attempts: attempt + 1 };
-        } catch (err) {
+        } catch (e) {
+          const err = e as RunError;
           if (attempt >= profile.maxRetries || !isRetryable(err)) {
             err.__attempts = attempt + 1;
             throw err;
@@ -148,25 +170,20 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
       }
     };
 
-    const outputs = {};          // port -> items[]
-    const addOut = (port, value) => {
+    const outputs: Record<string, Item[]> = {};          // port -> items[]
+    const addOut = (port: string, value: unknown) => {
       if (value === undefined || value === null) return;
-      (outputs[port] ||= []).push(...toItems(value));
+      (outputs[port] ||= []).push(...toItems<Item>(value as Item | Item[]));
     };
 
-    let nodeError;               // 노드 전체를 실패시킬 오류
+    let nodeError: RunError | undefined;   // 노드 전체를 실패시킬 오류
     let failedItems = 0;
     let totalAttempts = 0;
 
     try {
       if (def.mode === 'batch') {
         // ---- 배치 모드: 배열 전체를 한 번에 받는 노드 (Aggregate/Merge/Sort…) ----
-        const ctx = {
-          $json: primaryItems[0] ?? {}, $items: primaryItems, $index: 0, $now: started,
-          $results: results, $flow: { nodes, edges }, $meta: meta, $nodeId: node.id,
-          safeExpressions: !allowCode,
-          onAgentStep: (step) => onAgentStep(node.id, step),
-        };
+        const ctx = makeCtx(primaryItems[0] ?? {}, 0);
         const { output, attempts } = await runWithRetry(inputs, ctx);
         totalAttempts = attempts;
         for (const [port, value] of Object.entries(output || {})) addOut(port, value);
@@ -182,44 +199,38 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
         for (let c = 0; c < chunks.length; c++) {
           if (c > 0 && batchDelay) await sleep(batchDelay);
 
-          const runOne = async (item, index) => {
+          const runOne = async (item: Item, index: number) => {
             // 이 아이템만 담은 입력 (다중 입력 포트는 인덱스 매칭, 없으면 첫 아이템)
-            const oneInputs = {};
+            const oneInputs: NodeInputs = {};
             for (const [port, arr] of Object.entries(inputs)) {
               oneInputs[port] = port === 'main' ? item : (arr[index] ?? arr[0]);
             }
             if (!def.inputs.length) oneInputs.main = undefined; // 트리거
             else if (inputs.main) oneInputs.main = item;
 
-            const ctx = {
-              $json: item ?? {}, $items: primaryItems, $index: index, $now: started,
-              $results: results, $flow: { nodes, edges }, $meta: meta, $nodeId: node.id,
-              safeExpressions: !allowCode,
-              onAgentStep: (step) => onAgentStep(node.id, step),
-            };
-            const { output, attempts } = await runWithRetry(oneInputs, ctx);
+            const { output, attempts } = await runWithRetry(oneInputs, makeCtx(item, index));
             totalAttempts += attempts;
             return output;
           };
 
           const runners = chunks[c].map((item, i) => {
             const index = c * (batchSize || primaryItems.length) + i;
-            return async () => {
+            return async (): Promise<Settled> => {
               try {
                 const output = await runOne(item, index);
                 reportProgress();
                 return { ok: true, output };
               } catch (err) {
                 reportProgress();
-                return { ok: false, err, item, index };
+                return { ok: false, err: err as RunError, item, index };
               }
             };
           });
 
           // 청크 내부는 병렬(batchSize>1), 기본은 순차
-          const settled = batchSize > 1
+          const settled: Settled[] = batchSize > 1
             ? await Promise.all(runners.map((r) => r()))
-            : await runners.reduce(async (accP, r) => { const acc = await accP; acc.push(await r()); return acc; }, Promise.resolve([]));
+            : await runners.reduce(async (accP, r) => { const acc = await accP; acc.push(await r()); return acc; }, Promise.resolve([] as Settled[]));
 
           for (const s of settled) {
             if (s.ok) {
@@ -244,8 +255,9 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
           if (nodeError) break;
         }
       }
-    } catch (err) {
+    } catch (e) {
       // 배치 모드 실패
+      const err = e as RunError;
       nodeError = err;
       onDeadLetter({
         nodeId: node.id, nodeKind: node.data.kind, nodeTitle: def.title,
@@ -262,7 +274,7 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
     // 사람 승인 대기: 노드가 { __wait: {...} } 를 내면 여기서 멈춘다. 출력을 비워 두므로 아래 노드는
     // "입력 없음"으로 건너뛰고, 이 노드와 무관한 가지는 계속 흐른다. 재개는 seed 로 이 노드의 출력을 주입해 다시 실행한다.
     if (!nodeError && outputs.__wait?.length) {
-      const waits = outputs.__wait;
+      const waits = outputs.__wait as unknown as WaitRequest[];
       blocked.add(node.id);
       results.set(node.id, { status: 'waiting', output: {}, input: primaryItems, attempts: totalAttempts, wait: waits });
       onStatus(node.id, 'waiting', { input: primaryItems, wait: waits });
@@ -277,17 +289,18 @@ export async function runFlow(nodes, edges, { onStatus = () => {}, onLog = () =>
     } else {
       // 빈 포트는 undefined 로 (해당 경로로 데이터가 흐르지 않음)
       // 선언된 출력 포트 + 실제 수집된 포트(출력 노드처럼 선언 없이 main 을 내는 경우 포함)
-      const output = {};
+      const output: PortOutputs = {};
       const ports = new Set([...def.outputs, ...Object.keys(outputs)]);
       for (const port of ports) output[port] = emptyToUndefined(outputs[port] || []);
 
-      const status = failedItems > 0 ? 'failedContinue' : 'done';
+      const status: RunStatus = failedItems > 0 ? 'failedContinue' : 'done';
       results.set(node.id, { status, output, input: primaryItems, attempts: totalAttempts, failedItems });
       onStatus(node.id, status, { output, input: primaryItems });
 
-      const mainCount = countItems(output.main ?? Object.values(output).find((v) => v !== undefined));
+      const shown = output.main ?? Object.values(output).find((v) => v !== undefined);
+      const mainCount = countItems(shown);
       const inCount = primaryItems.length;
-      const preview = truncate(JSON.stringify(firstItem(output.main ?? Object.values(output).find((v) => v !== undefined))) ?? '', 48);
+      const preview = truncate(JSON.stringify(firstItem(shown)) ?? '', 48);
       onLog({
         kind: failedItems ? 'err' : 'ok',
         msg: `${failedItems ? '⚠' : '✔'} ${def.title} — ${inCount}건 입력 → ${mainCount}건 출력` +

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { NODE_TYPES } from '../engine/nodeTypes.js';
-import { profileFor } from '../engine/retry.js';
+import { NODE_TYPES } from '../engine/nodeTypes.ts';
+import { profileFor } from '../engine/retry.ts';
 import { Icon } from '../ui/icons.jsx';
 
 function pickOutput(output) {

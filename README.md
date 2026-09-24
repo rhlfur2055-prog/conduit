@@ -95,8 +95,18 @@ Each layer was measured on data with known answers; thresholds were tuned on one
 | **Stress test** | A deliberately wrong, stubborn fake LLM | wrong answers reaching output: **5.1%** vs **100%** for a no-verification baseline |
 
 **Honest limits.** Every LLM-involving number above was run against a *scripted* fake API — it measures the safety net,
-not Claude's answer quality, which hasn't been measured. The "no-verification baseline" is a reproduction of openclaw's
-published design inside this repo, **not** openclaw itself; no head-to-head benchmark was run.
+not answer quality. The "no-verification baseline" is a reproduction of openclaw's published design inside this repo,
+**not** openclaw itself; no head-to-head benchmark was run.
+
+**With a real model** (`npm run eval:live`, same 8 documents, one trap question each that the document cannot answer; single run, small sample):
+
+| Model | What the model produced | What the code did with it |
+|---|---|---|
+| Local · gemma3:4b (Ollama, RTX 5070) | 8 answers, 30 summary sentences, 118 s | **7 answers verified**, 1 refuted (a value not in the cited line) and repaired on the next round; **11 of 30 summary sentences dropped** for having no verbatim basis; **0 invented values reached a verified answer**; the model ignored 5 of 8 trap questions and answered 3 without inventing a value |
+| Local · qwen3:4b | — | Unusable in this pipeline: a 4B *reasoning* model spends its whole token budget thinking and returns an empty answer. Reported as a failure, not hidden. |
+| Claude | not yet measured | needs an API key; same command |
+
+The point is not that a 4B model is good (it isn't — it asks few questions and skips most traps). It is that **the verification layer does not care which model answered**: the same code refuted the unsupported value and dropped the ungrounded sentences.
 
 Specs with the measurements written back: [`.specify/memory/constitution.md`](.specify/memory/constitution.md) ·
 [`specs/001`](specs/001-verified-memory/spec.md) · [`003`](specs/003-value-grounding/spec.md) · [`004`](specs/004-goals-heartbeat/spec.md) ·

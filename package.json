@@ -27,6 +27,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "eval": "node server/evals.js",
+    "eval:live": "node server/live.eval.js",
     "preview": "vite preview"
   },
   "dependencies": {

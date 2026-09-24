@@ -98,7 +98,7 @@ Webhook 트리거에 주입되어 워크플로가 실행되고 실행 기록에 
 
 ## 새 노드 추가하는 법
 
-`src/engine/nodeTypes.js` 의 `NODE_TYPES` 에 항목 하나만 추가하면 팔레트에 자동 등록됩니다:
+`src/engine/nodeTypes.ts` 의 `NODE_TYPES` 에 항목 하나만 추가하면 팔레트에 자동 등록됩니다:
 
 ```js
 myNode: {

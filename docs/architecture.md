@@ -7,9 +7,10 @@
 ```
 src/
 ├─ engine/
-│  ├─ nodeTypes.js   # 노드 정의(메타 + 필드 + run) — UI 독립, 프론트/백엔드 공용
-│  ├─ executor.js    # 위상정렬 실행 + seed 주입 + 입/출력 캡처
-│  └─ expr.js        # {{ }} 표현식 해석
+│  ├─ types.ts       # Item · NodeDefinition · NodeResult 등 엔진의 데이터 모양 (서버 JS 는 JSDoc 으로 가져다 쓴다)
+│  ├─ nodeTypes.ts   # 노드 정의(메타 + 필드 + run) — UI 독립, 프론트/백엔드 공용
+│  ├─ executor.ts    # 위상정렬 실행 + seed 주입 + 입/출력 캡처
+│  └─ expr.ts        # {{ }} 표현식 해석
 ├─ ui/icons.jsx      # 라인 SVG 아이콘
 ├─ components/       # FlowNode · Sidebar · NodePanel · Inspector(NDV) · LogPanel
 ├─ api.js           # 백엔드 API 클라이언트

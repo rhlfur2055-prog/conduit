@@ -1,6 +1,6 @@
 import { memo, useContext } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { NODE_TYPES, itemCount } from '../engine/nodeTypes.js';
+import { NODE_TYPES, itemCount } from '../engine/nodeTypes.ts';
 import { FlowActions } from '../flowActions.js';
 import { Icon } from '../ui/icons.jsx';
 

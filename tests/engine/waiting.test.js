@@ -1,7 +1,7 @@
 // 사람 승인 대기 — 노드가 { __wait } 를 내면 엔진이 멈추고(waiting), 그 아래는 전부 건너뛰며, seed 로 주입하면 그 아래만 이어서 실행된다.
 import { describe, it, expect, afterEach } from 'vitest';
-import { runFlow } from '../../src/engine/executor.js';
-import { NODE_TYPES } from '../../src/engine/nodeTypes.js';
+import { runFlow } from '../../src/engine/executor.ts';
+import { NODE_TYPES } from '../../src/engine/nodeTypes.ts';
 
 const node = (id, kind, params = {}) => ({ id, data: { kind, params: { ...NODE_TYPES[kind].defaults, ...params } } });
 const trigger = (id, data) => node(id, 'manualTrigger', { json: JSON.stringify(data) });

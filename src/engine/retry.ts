@@ -3,7 +3,9 @@
 // 엔진과 UI가 공유한다.
 // ============================================================
 
-export const RETRY_PROFILES = {
+import type { RetryProfile } from './types.ts';
+
+export const RETRY_PROFILES: Record<string, RetryProfile> = {
   http:    { maxRetries: 3, baseMs: 1000, factor: 2, capMs: 30000 },
   llm:     { maxRetries: 5, baseMs: 2000, factor: 2, capMs: 60000 },
   email:   { maxRetries: 2, baseMs: 1500, factor: 2, capMs: 15000 },
@@ -12,7 +14,7 @@ export const RETRY_PROFILES = {
 };
 
 // 노드 kind → 프로필
-const KIND_PROFILE = {
+const KIND_PROFILE: Record<string, string> = {
   httpRequest: 'http', httpAuth: 'http',
   slack: 'http', notion: 'http', youtube: 'http', naver: 'http', hotTopics: 'http',
   gmail: 'email', sendEmail: 'email',
@@ -21,7 +23,7 @@ const KIND_PROFILE = {
   stopError: 'none',
 };
 
-export function profileFor(kind) {
+export function profileFor(kind: string): RetryProfile {
   return RETRY_PROFILES[KIND_PROFILE[kind] || 'none'];
 }
 
@@ -32,9 +34,10 @@ const TRANSIENT_CODES = [408, 425, 429, 500, 502, 503, 504, 529];
 const TRANSIENT_NET = ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'fetch failed'];
 
 /** 에러 메시지/코드에서 재시도 가능 여부 판정 */
-export function isRetryable(err) {
-  const msg = String(err?.message || err || '');
-  const status = err?.status ?? Number((msg.match(/\b(\d{3})\b/) || [])[1]);
+export function isRetryable(err: unknown): boolean {
+  const e = err as { message?: unknown; status?: unknown } | null | undefined;
+  const msg = String(e?.message || err || '');
+  const status = Number(e?.status ?? (msg.match(/\b(\d{3})\b/) || [])[1]);
 
   if (PERMANENT.includes(status)) return false;
   if (TRANSIENT_CODES.includes(status)) return true;
@@ -45,7 +48,7 @@ export function isRetryable(err) {
 }
 
 /** 지수 백오프 + ±20% 지터 */
-export function backoffMs(attempt, p) {
+export function backoffMs(attempt: number, p: RetryProfile): number {
   const raw = Math.min(p.capMs, p.baseMs * Math.pow(p.factor, attempt));
   const jitter = raw * 0.2 * (Math.random() * 2 - 1);
   return Math.max(0, Math.round(raw + jitter));

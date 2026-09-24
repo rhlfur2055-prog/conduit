@@ -75,4 +75,4 @@ Webhook 트리거 노드에서 `signature` 선택 (`none|slack|github|stripe|gen
 - 기본값: 키가 없으면(로컬 전용) **켜짐**, `CONDUIT_API_KEY` 가 있으면(외부에 연 서버) **꺼짐**. `CONDUIT_ALLOW_CODE=true|false` 로 직접 지정할 수 있습니다.
 - 브라우저 캔버스에서 돌리는 실행은 내 컴퓨터 안이라 제한하지 않습니다.
 - 경로 표현식은 `new Function` 없이 직접 해석하고, `constructor`·`__proto__`·프로토타입 메서드는 읽지 않습니다.
-- 현재 상태는 `/api/health` 의 `code: on|off` 로 확인. 구현: `server/policy.js`, `src/engine/expr.js`(evalPath), 테스트: `tests/engine/policy.test.js`, `tests/server/policy.test.js`
+- 현재 상태는 `/api/health` 의 `code: on|off` 로 확인. 구현: `server/policy.js`, `src/engine/expr.ts`(evalPath), 테스트: `tests/engine/policy.test.js`, `tests/server/policy.test.js`

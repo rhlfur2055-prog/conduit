@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import { Workflows, Executions, Credentials } from '../store.js';
 import { execute, registerSchedules, clearSchedulesFor, buildErrorPayload, dispatchErrorWorkflows } from '../runtime.js';
-import { runFlow } from '../../src/engine/executor.js';
+import { runFlow } from '../../src/engine/executor.ts';
 import { currentPolicy } from '../policy.js';
 
 export const workflows = Router();

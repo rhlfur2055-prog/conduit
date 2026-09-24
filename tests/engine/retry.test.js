@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { RETRY_PROFILES, profileFor, isRetryable, backoffMs } from '../../src/engine/retry.js';
+import { RETRY_PROFILES, profileFor, isRetryable, backoffMs } from '../../src/engine/retry.ts';
 
 afterEach(() => vi.restoreAllMocks());
 

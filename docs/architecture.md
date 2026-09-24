@@ -12,6 +12,7 @@ src/
 │  ├─ executor.ts    # 위상정렬 실행 + seed 주입 + 입/출력 캡처 + 자동 승인 게이트
 │  ├─ gates.ts       # AI→발송 경로에 승인이 없는지 그래프로 판정 (실행기와 lint API 가 같이 쓴다)
 │                    # 실행 추적: runtime.js 가 노드마다 status·attempts·ms·injected·kind 를 남기고 GET /api/executions/:id/trace 가 승인·DLQ 와 묶는다
+│                    # 작업 큐: server/queue.js(jobs 테이블 · claimNext 한 문장 · 임대) · server/worker.js(별도 워커 프로세스)
 │  └─ expr.ts        # {{ }} 표현식 해석
 ├─ ui/icons.jsx      # 라인 SVG 아이콘
 ├─ components/       # FlowNode · Sidebar · NodePanel · Inspector(NDV) · LogPanel

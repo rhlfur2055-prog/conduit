@@ -23,7 +23,7 @@ server/index.js        CONDUIT_HEARTBEAT 크론이 있으면 주기 실행 (겹�
 | 하루 실행 상한 · 한 번 하트비트 실행 상한 | 건너뜀 |
 | 확신도 ≥ 0.7 · 목표 requireApproval 꺼짐 · 워크플로에 부작용 노드 없음 | → 아니면 **사람 승인 대기** |
 
-부작용 노드(코드로 판정): youtubeUpload · slack · gmail · telegram · notion · verifiedComment · httpRequest · httpAuth · mcpTool · code · aiAgent
+부작용 노드(코드로 판정): slack · gmail · telegram · notion · httpRequest · httpAuth · mcpTool · code · aiAgent
 
 ## 규칙 모드 (LLM 없음)
 

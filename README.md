@@ -19,12 +19,12 @@ from the web UI or Telegram, in the spirit of openclaw — with one design rule 
 | **What** | Node-based workflow automation + a verified personal assistant (personal project, Aug 2026 –) |
 | **History** | Git history starts 2026-09-19: the repo was re-initialised before going public so no secrets remain in history. Earlier work is in [docs/devlog.md](docs/devlog.md). |
 | **Stack** | Vite · React · React Flow / Express · Node.js · transformers.js / PaddleOCR (Python, optional) |
-| **Size** | **54 node types** · ~13,000 lines (frontend + server) |
-| **Tests** | **414 Vitest tests** + a **33-step local end-to-end check** that drives a real server process over HTTP |
+| **Size** | **45 node types** · ~11,000 lines (frontend + server) |
+| **Tests** | **410 Vitest tests** + a **33-step local end-to-end check** that drives a real server process over HTTP |
 | **Language** | The assistant and the Easy-start screen speak Korean and English. Most docs are in Korean; this page summarizes them. |
 
 ```bash
-npm install && npm test        # 414 tests
+npm install && npm test        # 410 tests
 node server/index.js           # server + built UI → http://localhost:8787 (opens the "Easy start" guide)
 npm run dev                    # canvas dev server → http://localhost:5173
 node server/local.e2e.js       # end-to-end: real server, fake Telegram/Anthropic, 33 checks
@@ -110,7 +110,7 @@ openclaw has been run, so this repo does not claim to outperform it.
 - **Shared engine** — `src/engine/` runs identically in the browser (preview) and on the server.
 - **Item-array data model** — like n8n: items flow between nodes, IF/Switch branch per item, failed items go to a DLQ.
 - **Approval gate that resumes, not reruns** — execution pauses at a human checkpoint; on approval, saved outputs are
-  re-injected so only the downstream nodes run (a 2-minute video render is not redone). Telegram buttons, idempotent decisions,
+  re-injected so only the downstream nodes run (the LLM call that drafted the reply is not repeated). Telegram buttons, idempotent decisions,
   survives restarts.
 - **Schedules** — fixed intervals or any cron expression. Webhooks with HMAC signature verification and idempotency.
 - **MCP both ways** — saved workflows are exposed as MCP tools; external MCP servers can be called from nodes.

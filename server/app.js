@@ -14,7 +14,6 @@ import { workflows } from './routes/workflows.js';
 import { webhooks } from './routes/webhooks.js';
 import { mcpTools, mcpServer } from './routes/mcp.js';
 import { dlq } from './routes/dlq.js';
-import { channelApi, dashboardPage } from './routes/channel.js';
 import { approvals } from './routes/approvals.js';
 import { agent } from './routes/agent.js';
 
@@ -36,7 +35,6 @@ export function createApp() {
     res.json({ ok: true, name: 'Conduit', time: new Date().toISOString(), auth: authMode(), code: codeExecutionAllowed() ? 'on' : 'off' }));
   // 웹훅은 외부 서비스가 부르는 입구 — 노드별 HMAC 서명 검증 + 멱등성으로 보호
   app.use('/webhook', webhooks);
-  app.use('/dashboard', dashboardPage);
 
   /* ---------- 인증 — 여기부터 /api/*, /mcp 는 키가 필요하다 ---------- */
   app.use(['/api', '/mcp'], requireApiKey());
@@ -47,7 +45,6 @@ export function createApp() {
   app.use('/api', approvals);      // /api/approvals — 사람 승인 대기 목록·결정
   app.use('/api', agent);          // /api/goals, /api/heartbeat — 목표·하트비트 (스스로 일을 시작)
   app.use('/api/mcp', mcpTools);   // /api/mcp/tools
-  app.use('/api/channel', channelApi);
   app.use('/mcp', mcpServer);
 
   /* ---------- 프로덕션: 빌드된 프론트엔드 서빙 (단일 컨테이너) ---------- */

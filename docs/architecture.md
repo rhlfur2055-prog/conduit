@@ -40,7 +40,6 @@ server/
     webhooks.js   /webhook/*  (공개 · HMAC 서명 검증 + 멱등성)
     mcp.js        /api/mcp/tools (외부 MCP 도구 목록) · /mcp (Conduit = MCP 서버)
     dlq.js        /api/dlq · /api/idempotency
-    channel.js    /api/channel/stats · /dashboard
   store.js        JSON 파일 저장소 + 크리덴셜 AES-256-GCM (CONDUIT_DATA_DIR 로 위치 변경 가능)
 ```
 

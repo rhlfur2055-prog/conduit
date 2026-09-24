@@ -3,17 +3,12 @@
 // LLM·외부 연동·에이전트 같은 서버 기능을 globalThis 로 주입받는다.
 // 브라우저에서는 이 주입이 없으므로 노드가 시뮬레이션 응답을 낸다.
 // ============================================================
-import { readData, VerifiedComments } from './store.js';
+import { readData } from './store.js';
 import { callLLM } from './llm.js';
 import * as integrations from './integrations.js';
 import { runAgent } from './agent.js';
 import { mcpListTools, mcpCallTool } from './mcp.js';
-import { renderDataShort, renderBrainQuiz, renderSpinTest } from './video.js';
-import { renderMultiLang } from './render-multi.js';
-import { speak } from './tts.js';
-import { fetchRanking } from './rankdata.js';
 import { fetchHotTopics } from './hottopics.js';
-import { renderIssueBrief } from './render-issue.js';
 import { requestApproval } from './approvals.js';
 import { telegramSend } from './telegram.js';
 import { understandScreen } from './vision.js';
@@ -26,7 +21,6 @@ import { changeDetect, memoryDigest } from './templates.js';
 export function installBridges() {
   globalThis.__conduitLLM = callLLM;
   globalThis.__conduitAgent = runAgent;
-  globalThis.__conduitTtsSpeak = speak; // 렌더 브리지가 문장별 TTS 세그먼트 생성에 사용
   globalThis.__conduitData = readData;   // 코드 노드에서 server/data/*.json 을 읽을 때 사용
   globalThis.__conduitIntegrations = {
     slack: integrations.slack,
@@ -35,16 +29,7 @@ export function installBridges() {
     youtube: integrations.youtube,
     naver: integrations.naver,
     http: integrations.http,
-    videoRender: renderDataShort,
-    brainQuiz: renderBrainQuiz,
-    multiLang: renderMultiLang,
-    spinTest: renderSpinTest,
-    youtubeUpload: integrations.youtubeUpload,
-    verifiedComment: async (args) => VerifiedComments.add(args),
-    tts: speak,
-    rankData: fetchRanking,
     hotTopics: fetchHotTopics,
-    issueShort: renderIssueBrief,
     approval: requestApproval,   // 사람 승인 대기 — 스냅샷 저장 + 텔레그램 버튼 메시지
     telegram: telegramSend,
     ocr: (a) => readText(a),

@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { parseTrendsRss, selectTopics, withoutRecent, recordUsed, loadHistory, fetchHotTopics } from '../../server/hottopics.js';
-import { cleanHeadline, stripSourceSuffix, buildIssueScript, issueYoutubeMeta } from '../../server/render-issue.js';
 
 const RSS = `<?xml version="1.0" encoding="UTF-8"?>
 <rss xmlns:ht="https://trends.google.com/trending/rss" version="2.0"><channel>
@@ -72,45 +71,5 @@ describe('fetchHotTopics (가짜 fetch)', () => {
   });
   it('RSS 응답이 실패하면 상태 코드를 담아 던진다', async () => {
     await expect(fetchHotTopics({ fetchImpl: async () => ({ ok: false, status: 503 }), historyFile: path.join(os.tmpdir(), 'x.json') })).rejects.toThrow(/503/);
-  });
-});
-
-describe('대본·메타 (render-issue)', () => {
-  it('cleanHeadline — 꼬리표 제거, 한자 中→중, 길면 구절 경계에서 자름', () => {
-    expect(cleanHeadline('[종합] 1242회 로또 1등 9명…당첨금 각 32억8천만원(종합)')).toBe('1242회 로또 1등 9명…당첨금 각 32억8천만원');
-    expect(cleanHeadline('이카르디 영입 검토中')).toBe('이카르디 영입 검토중');
-    const src = '가나다라 마바사아, 자차카타 파하 아주 긴 제목이 계속 이어지고 또 이어져서 구십 자를 훌쩍 넘기는 문장, 그리고 또 다른 절이 붙습니다 끝까지 그리고 여기서도 한참 더 이어지는 아주 긴 꼬리 문장입니다';
-    expect(src.length).toBeGreaterThan(90);
-    const long = cleanHeadline(src);
-    expect(long.length).toBeLessThanOrEqual(91);
-    expect(long.endsWith('…')).toBe(true);
-    expect(src.startsWith(long.slice(0, -1))).toBe(true); // 앞부분을 그대로 두고 뒤만 자른다
-    expect(cleanHeadline('짧은 제목')).toBe('짧은 제목');
-  });
-  it('stripSourceSuffix — 제목 끝의 언론사 이름만 뗀다', () => {
-    expect(stripSourceSuffix('33억 주인공 9명 탄생…이번주 로또 당첨번호는? - 머니투데이', '머니투데이')).toBe('33억 주인공 9명 탄생…이번주 로또 당첨번호는?');
-    expect(stripSourceSuffix('속보 | 연합뉴스', '연합뉴스')).toBe('속보');
-    expect(stripSourceSuffix('머니투데이가 전한 소식', '머니투데이')).toBe('머니투데이가 전한 소식'); // 끝이 아니면 그대로
-    expect(stripSourceSuffix('제목 - 다른곳', '머니투데이')).toBe('제목 - 다른곳');
-    expect(stripSourceSuffix('A+B (주) 소식 - A+B (주)', 'A+B (주)')).toBe('A+B (주) 소식');   // 정규식 특수문자 안전
-    expect(buildIssueScript({ topic: 'x', headlines: [{ title: '당첨번호는? - 머니투데이', source: '머니투데이' }] }).cards[0].title).toBe('당첨번호는?');
-  });
-  it('buildIssueScript — 훅·헤드라인 낭독·CTA, 최대 개수, 빈 헤드라인은 오류', () => {
-    const s = buildIssueScript({ topic: '로또', headlines: [{ title: 'A 헤드라인', source: '연합뉴스', url: 'u1' }, { title: 'B', source: 'Daum' }, { title: 'C' }, { title: 'D' }], maxHeadlines: 3 });
-    expect(s.hook).toBe('오늘 검색이 급증한 키워드, 로또. 무슨 일이 있었을까요?');
-    expect(s.items).toEqual(['첫 번째. A 헤드라인', '두 번째. B', '세 번째. C']);
-    expect(s.cards).toHaveLength(3);
-    expect(s.cards[0]).toEqual({ title: 'A 헤드라인', source: '연합뉴스', url: 'u1' });
-    expect(() => buildIssueScript({ topic: 'x', headlines: [] })).toThrow(/헤드라인/);
-  });
-  it('issueYoutubeMeta — 설명란에 출처와 링크, 근거 없는 수치 없음', () => {
-    const s = buildIssueScript({ topic: '로또', headlines: [{ title: 'A', source: '연합뉴스', url: 'https://e.com/a' }] });
-    const m = issueYoutubeMeta({ topic: '로또', cards: s.cards, date: '2026-09-20' });
-    expect(m.title).toBe('로또, 오늘 왜 뜬 걸까? | 핫이슈 3줄');
-    expect(m.description).toContain('1. 연합뉴스 · A');
-    expect(m.description).toContain('https://e.com/a');
-    expect(m.description).toContain('#핫이슈');
-    expect(m.description).not.toMatch(/\d+%|상위 \d/);
-    expect(m.tags.split(',')).toContain('연합뉴스');
   });
 });

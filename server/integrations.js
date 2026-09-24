@@ -19,14 +19,6 @@ const ENV_FALLBACK = {
     process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD
       ? { user: process.env.GMAIL_USER, appPassword: process.env.GMAIL_APP_PASSWORD }
       : null,
-  youtubeUpload: () =>
-    process.env.YOUTUBE_CLIENT_ID && process.env.YOUTUBE_CLIENT_SECRET && process.env.YOUTUBE_REFRESH_TOKEN
-      ? {
-          clientId: process.env.YOUTUBE_CLIENT_ID,
-          clientSecret: process.env.YOUTUBE_CLIENT_SECRET,
-          refreshToken: process.env.YOUTUBE_REFRESH_TOKEN,
-        }
-      : null,
 };
 
 function findCred(type, name) {
@@ -132,68 +124,6 @@ export async function naver({ credential, type, query, display }) {
     description: stripTags(it.description),
   }));
   return { ok: true, count: items.length, items };
-}
-
-/* ---------- YouTube 업로드 (OAuth 리프레시 토큰) ---------- */
-import fs from 'node:fs';
-
-export async function youtubeUpload({ credential, filePath, title, description, tags, privacyStatus, categoryId }) {
-  const cred = findCred('youtubeUpload', credential);
-  if (!cred?.clientId || !cred?.refreshToken) {
-    return { simulated: true, note: 'YouTube 업로드 크리덴셜 없음 (.env의 YOUTUBE_CLIENT_ID/SECRET/REFRESH_TOKEN 채우면 실제 업로드)' };
-  }
-  if (!filePath || !fs.existsSync(filePath)) {
-    return { ok: false, error: `업로드할 파일이 없습니다: ${filePath}` };
-  }
-
-  // 1) 리프레시 토큰 → 액세스 토큰
-  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: cred.clientId,
-      client_secret: cred.clientSecret,
-      refresh_token: cred.refreshToken,
-      grant_type: 'refresh_token',
-    }),
-  });
-  const token = await tokenRes.json();
-  if (!token.access_token) return { ok: false, error: '토큰 갱신 실패: ' + (token.error_description || token.error) };
-
-  // 2) 업로드 세션 시작 (resumable)
-  const meta = {
-    snippet: {
-      title: String(title || '제목 없음').slice(0, 100),
-      description: String(description || ''),
-      tags: Array.isArray(tags) ? tags : String(tags || '').split(',').map((s) => s.trim()).filter(Boolean),
-      // 27 교육 / 23 코미디 / 24 엔터테인먼트 — 밈·쇼츠는 코미디로 올린다
-      categoryId: String(categoryId || '27'),
-    },
-    status: { privacyStatus: privacyStatus || 'private', selfDeclaredMadeForKids: false },
-  };
-  const initRes = await fetch(
-    'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token.access_token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(meta),
-    }
-  );
-  const uploadUrl = initRes.headers.get('location');
-  if (!uploadUrl) return { ok: false, error: '업로드 세션 시작 실패: ' + (await initRes.text()).slice(0, 300) };
-
-  // 3) 파일 전송
-  const buf = fs.readFileSync(filePath);
-  const upRes = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'video/mp4', 'Content-Length': String(buf.length) },
-    body: buf,
-  });
-  const data = await upRes.json();
-  if (data.id) {
-    return { ok: true, videoId: data.id, url: `https://youtu.be/${data.id}`, privacyStatus: meta.status.privacyStatus };
-  }
-  return { ok: false, error: data.error?.message || '업로드 실패' };
 }
 
 /* ---------- 범용 인증 HTTP (거의 모든 REST API) ---------- */

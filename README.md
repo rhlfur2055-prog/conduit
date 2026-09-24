@@ -21,14 +21,14 @@ The answer runs through the whole codebase:
 | **What** | Workflow engine with a human-approval gate, a verification layer for LLM output, and MCP in both directions (personal project, Aug 2026 –) |
 | **Stack** | TypeScript (engine core, strict) · JavaScript (server, UI) / Node.js · Express / React · React Flow · Vite / Docker · GitHub Actions |
 | **Size** | ~11,000 lines (engine + server + UI) · 45 node types |
-| **Tests** | **428 Vitest tests** + a **33-step end-to-end check** that drives a real server process over HTTP |
+| **Tests** | **442 Vitest tests** (incl. one that SIGKILLs a real server mid-resume and restarts it) + a **33-step end-to-end check** over HTTP |
 | **Brain** | **No API key required.** If [Ollama](https://ollama.com) is running, Conduit uses the model on your PC and nothing leaves your machine. Add a Claude key only if you want it. |
 | **History** | Git history starts 2026-09-19: the repo was re-initialised before going public so no secrets remain. Earlier work is in [docs/devlog.md](docs/devlog.md). |
 
 **Try it without installing:** [rhlfur2055-prog.github.io/conduit](https://rhlfur2055-prog.github.io/conduit/) — the canvas runs the engine in your browser; integration nodes simulate.
 
 ```bash
-npm install && npm test        # 428 tests, no keys needed
+npm install && npm test        # 442 tests, no keys needed
 node server/index.js           # server + built UI → http://localhost:8787
 node server/local.e2e.js       # end-to-end: real server, fake Telegram/Anthropic, 33 checks
 ```
@@ -61,8 +61,8 @@ Design decisions that make this safe rather than merely convenient:
 
 - **Two-phase pause.** While the node runs, only a record exists (`preparing`). The snapshot is committed and the message sent *after* execution finishes (`pending`). No button can be pressed mid-run, and no node runs twice on resume.
 - **Everything below the gate is skipped**, so multi-input nodes (Merge) never run on half their inputs. Unrelated branches keep flowing.
-- **Idempotent decisions.** Pressing the button twice resumes once. If resume fails, the user sees "approved but failed" with a 🔁 retry button.
-- **Survives restarts.** Waiting runs are persisted; runs that died mid-resume are found and reported at startup.
+- **Idempotent decisions.** A decision is one `UPDATE … WHERE status = 'pending'` — a compare-and-set the database performs, so two presses (or two processes) resume once. The same statement records that the resume has started, so there is no gap between "decided" and "resuming" for a crash to fall into. If resume fails, the user sees "approved but failed" with a 🔁 retry button.
+- **Survives restarts.** Waiting runs and decisions live in SQLite; a run that died mid-resume is found and reported at startup, and 🔁 retry resumes it. Proven by a test that **SIGKILLs a real server process in the middle of a resume** and restarts it on the same data directory (`tests/server/crash.test.js`).
 - **Never passes silently.** No channel or a failed send raises a node error instead of behaving as if approved.
 
 | | |
@@ -106,7 +106,8 @@ Specs with the measurements written back: [`.specify/memory/constitution.md`](.s
 - **One engine, two runtimes** — `src/engine/` runs identically in the browser (preview) and on the server. Server-only capabilities (LLM, integrations, agent) are injected through a bridge; the browser gets simulated responses.
 - **Item-array data model** — like n8n: items flow between nodes, plain nodes handle one item and the engine loops, IF/Switch branch per item, failed items go to a **dead-letter queue** instead of killing the run.
 - **Retry with exponential backoff**, Continue-On-Fail, Error Trigger.
-- **Idempotency** — webhooks and approvals deduplicate by key; the same request twice runs once.
+- **Idempotency** — webhook keys are a `PRIMARY KEY` in SQLite and a claim is a single upsert, so the same request twice runs once even under concurrency (100 simultaneous claims → 1 winner, tested).
+- **Operational records in SQLite** (built-in `node:sqlite`, no native dependency): approvals, idempotency keys, dead letters, executions — the records that must survive a crash and reject duplicates. Configuration (workflows, credentials, people) stays in JSON files because it is small and human-editable. Legacy JSON records migrate on first start.
 - **Webhooks with HMAC signature verification** (Slack / GitHub / Stripe style), cron and interval schedules.
 - **Security defaults** — API-key auth with `timingSafeEqual` (local-only when no key is set), DNS-rebinding and cross-origin blocked, secrets encrypted at rest (AES-256-GCM) and never returned by the API, code execution can be disabled on servers.
 - **Ops** — GitHub Actions on every push, single-container Docker.

@@ -9,8 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { atNarration, TTS_VOICE, ytMeta } from './i18n.js';
 
-const PIPELINE_DIR = 'C:/workflow/video-pipeline';
-const OUT_DIR = path.join(PIPELINE_DIR, 'out');
+import { PIPELINE_DIR, OUT_DIR } from './videoPipeline.js';
 
 /* [주의] src/AttentionTest.tsx 의 ARENA / BALL_R / 물리 공식과 반드시 동일하게 유지할 것 */
 const ARENA = { x: 40, y: 460, w: 1000, h: 1250 };

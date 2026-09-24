@@ -1,6 +1,7 @@
 import { Icon } from '../ui/icons.jsx';
 
 const NAV = [
+  { key: 'easy', label: '쉬운 시작', icon: 'spark' },
   { key: 'workflows', label: '워크플로', icon: 'flow', active: true },
   { key: 'executions', label: '실행 기록', icon: 'list' },
   { key: 'dlq', label: '실패 큐 (DLQ)', icon: 'close' },
@@ -9,12 +10,12 @@ const NAV = [
 ];
 
 export default function Sidebar({
-  email, onNew, onOpenCredentials, onOpenExecutions, onOpenDlq, onOpenSettings,
+  email, onNew, onOpenCredentials, onOpenExecutions, onOpenDlq, onOpenSettings, onOpenEasy,
   workflows = [], currentId, onSelectWorkflow, onDeleteWorkflow,
 }) {
   const handle = (email || 'user@flowforge').split('@')[0];
   const initial = handle.charAt(0).toUpperCase();
-  const handlers = { credentials: onOpenCredentials, executions: onOpenExecutions, dlq: onOpenDlq, settings: onOpenSettings };
+  const handlers = { easy: onOpenEasy, credentials: onOpenCredentials, executions: onOpenExecutions, dlq: onOpenDlq, settings: onOpenSettings };
 
   return (
     <aside className="sb">

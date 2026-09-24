@@ -26,6 +26,7 @@ import LogPanel from './components/LogPanel.jsx';
 import CredentialsModal from './components/CredentialsModal.jsx';
 import ExecutionsModal from './components/ExecutionsModal.jsx';
 import DlqModal from './components/DlqModal.jsx';
+import EasyStart from './components/EasyStart.jsx';
 
 const nodeTypes = { flowNode: FlowNode };
 const STORAGE_KEY = 'conduit:v1';
@@ -100,7 +101,8 @@ function loadInitial() {
 }
 
 function Editor() {
-  const initial = useRef(loadInitial()).current;
+  // 최초 1회만 계산 (lazy initializer) — 렌더마다 localStorage 를 다시 읽지 않는다
+  const [initial] = useState(loadInitial);
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
   const [log, setLog] = useState([]);
@@ -110,6 +112,11 @@ function Editor() {
   const [serverUp, setServerUp] = useState(false);
   const [credOpen, setCredOpen] = useState(false);
   const [execOpen, setExecOpen] = useState(false);
+  const [easyOpen, setEasyOpen] = useState(false);
+  // 처음 쓰는 사람: 준비가 안 돼 있으면 쉬운 시작을 먼저 띄운다 (한 번만)
+  useEffect(() => {
+    api.agentStatus().then((s) => { if (!s?.quickstart?.ready) setEasyOpen(true); }).catch(() => {});
+  }, []);
   const [dlqOpen, setDlqOpen] = useState(false);
   const [currentId, setCurrentId] = useState(initial.currentId);
   const [wfName, setWfName] = useState(initial.wfName);
@@ -462,6 +469,7 @@ function Editor() {
           onNew={newFlow}
           onOpenCredentials={() => setCredOpen(true)}
           onOpenExecutions={() => setExecOpen(true)}
+          onOpenEasy={() => setEasyOpen(true)}
           onOpenDlq={() => setDlqOpen(true)}
           onOpenSettings={openSettings}
           workflows={wfList}
@@ -557,6 +565,7 @@ function Editor() {
 
         <CredentialsModal open={credOpen} onClose={() => setCredOpen(false)} />
         <ExecutionsModal open={execOpen} onClose={() => setExecOpen(false)} />
+        <EasyStart open={easyOpen} onClose={() => setEasyOpen(false)} />
         <DlqModal open={dlqOpen} onClose={() => setDlqOpen(false)} />
       </div>
     </FlowActions.Provider>

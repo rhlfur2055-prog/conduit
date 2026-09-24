@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import { Icon } from '../ui/icons.jsx';
 
 // 크리덴셜 타입별 입력 스키마. 값은 서버에서 AES-256-GCM 으로 암호화 저장된다.
-export const CRED_TYPES = {
+const CRED_TYPES = {
   slack: { label: 'Slack', fields: [{ key: 'token', label: 'Bot Token (xoxb-…)' }] },
   gmail: { label: 'Gmail (앱 비밀번호)', fields: [{ key: 'user', label: 'Gmail 주소' }, { key: 'appPassword', label: '앱 비밀번호 16자리' }] },
   notion: { label: 'Notion', fields: [{ key: 'token', label: 'Integration Token (ntn_/secret_)' }] },

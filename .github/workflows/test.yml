@@ -15,7 +15,6 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm ci --prefix server
-      - run: npm ci --prefix packages/conduit-workflows-mcp
+      - run: npm run lint
       - run: npm test
       - run: npm run build

@@ -90,10 +90,13 @@ export const NODE_TYPES = {
   scheduleTrigger: {
     title: '스케줄 트리거', icon: 'clock', color: '#9a7b4f', category: '트리거', backend: true,
     inputs: [], outputs: ['main'],
-    defaults: { interval: '매일 09:00' },
-    fields: [{ key: 'interval', label: '실행 주기', type: 'select', options: ['매분', '10분마다', '매시', '매일 09:00', '매주 월요일'] }],
-    summary: (p) => `주기: ${p.interval}`,
-    run: async (_i, p, ctx) => ({ main: { triggeredAt: ctx.$now, interval: p.interval } }),
+    defaults: { interval: '매일 09:00', cron: '' },
+    fields: [
+      { key: 'interval', label: '실행 주기', type: 'select', options: ['매분', '10분마다', '매시', '매일 09:00', '매주 월요일', '직접 지정'] },
+      { key: 'cron', label: '직접 지정할 때 — 분 시 일 월 요일 (예: 30 8 * * * = 매일 8시 30분, 0 9 * * 1-5 = 평일 9시)', type: 'text' },
+    ],
+    summary: (p) => (p.interval === '직접 지정' ? `주기: ${p.cron || '(비어 있음)'}` : `주기: ${p.interval}`),
+    run: async (_i, p, ctx) => ({ main: { triggeredAt: ctx.$now, interval: p.interval === '직접 지정' ? p.cron : p.interval } }),
   },
   webhookTrigger: {
     title: 'Webhook 트리거', icon: 'globe', color: '#9a7b4f', category: '트리거', backend: true,
@@ -184,6 +187,71 @@ export const NODE_TYPES = {
         : p.format === 'Unix(ms)' ? d.getTime()
         : d.toISOString();
       return { main: { ...(i.main || {}), [p.field]: v } };
+    },
+  },
+  listText: {
+    title: '목록을 글로', icon: 'list', color: '#4e8a7c', category: '동작',
+    inputs: ['main'], outputs: ['main'],
+    defaults: { field: 'items', header: '', line: '• {title}', target: 'text' },
+    fields: [
+      { key: 'field', label: '목록 필드 경로 (예: items)', type: 'text' },
+      { key: 'header', label: '첫 줄 (선택)', type: 'text' },
+      { key: 'line', label: '항목마다 한 줄 — {필드경로} 로 값 넣기 (예: • {topic} — {headlines.0.title})', type: 'text' },
+      { key: 'prefer', label: '이 낱말이 든 항목만 먼저 (쉼표, 선택)', type: 'text' },
+      { key: 'max', label: '최대 줄 수 (0 = 전부)', type: 'text' },
+      { key: 'noMatch', label: '맞는 항목이 없을 때 덧붙일 말 (선택)', type: 'text' },
+      { key: 'target', label: '결과 저장 필드', type: 'text' },
+    ],
+    summary: (p) => `${p.field} → 글`,
+    // LLM 없이 목록을 문장으로 — 들어온 값만 쓰므로 지어낼 자리가 없다. {…} 는 표현식({{ }})과 겹치지 않게 따로 쓴다
+    run: async (i, p) => {
+      const list = getPath(i.main, p.field);
+      let arr = Array.isArray(list) ? list : [];
+      let note = '';
+      // 관심사 먼저 (specs/007) — 쉼표 낱말이 항목 어딘가에 있으면 그것만. 하나도 없으면 앞에서부터 + 안내
+      const prefer = String(p.prefer || '').split(',').map((w) => w.trim().toLowerCase()).filter(Boolean);
+      if (prefer.length) {
+        const hit = arr.filter((it) => prefer.some((w) => JSON.stringify(it ?? '').toLowerCase().includes(w)));
+        if (hit.length) arr = hit; else note = p.noMatch || '';
+      }
+      if (Number(p.max) > 0) arr = arr.slice(0, Number(p.max));
+      const lines = arr.map((it) => String(p.line || '').replace(/\{([^{}]+)\}/g, (_m, path) => {
+        const v = getPath(it, path.trim());
+        return v === undefined || v === null ? '' : String(v);
+      }).trim()).filter(Boolean);
+      const text = [p.header, ...(lines.length ? lines : ['(항목 없음)']), note].filter(Boolean).join('\n');
+      return { main: { ...(i.main || {}), [p.target || 'text']: text } };
+    },
+  },
+  memoryDigest: {
+    title: '기억 모아 보기 (검증된 사실)', icon: 'list', color: '#7c5cbf', category: 'AI', backend: true,
+    inputs: ['main'], outputs: ['main'],
+    defaults: { days: '7', target: 'text' },
+    fields: [
+      { key: 'days', label: '최근 며칠', type: 'select', options: ['1', '7', '30'] },
+      { key: 'target', label: '결과 저장 필드', type: 'text' },
+    ],
+    summary: (p) => `최근 ${p.days}일 기억`,
+    // 소크라테스식 읽기에서 인용 검증을 통과해 저장된 사실만 원문 그대로 모은다 (LLM 없음)
+    run: async (i, p) => {
+      const r = await callIntegration('memoryDigest', { days: Number(p.days) || 7, ownerId: p.owner || i.main?.ownerId || 'owner', lang: p.lang });
+      return { main: { ...(i.main || {}), [p.target || 'text']: r.text, digest: r } };
+    },
+  },
+  changeDetect: {
+    title: '변경 감지 (지난번과 다르면)', icon: 'branch', color: '#b0813f', category: '흐름 제어', backend: true,
+    inputs: ['main'], outputs: ['changed', 'same'],
+    defaults: { key: 'page', field: 'data' },
+    fields: [
+      { key: 'key', label: '무엇을 지켜보나 (이름 — 같은 이름끼리 비교)', type: 'text' },
+      { key: 'field', label: '비교할 필드 경로 (예: data)', type: 'text' },
+    ],
+    summary: (p) => `${p.key} 이 바뀌면`,
+    // 지난 값의 해시를 서버에 저장한다. 처음 보는 값은 기준으로만 저장하고 same 으로 보낸다 (켜자마자 알림이 가지 않도록)
+    run: async (i, p) => {
+      const r = await callIntegration('changeDetect', { key: p.key, value: getPath(i.main, p.field) });
+      const item = { ...(i.main || {}), change: r };
+      return r.changed ? { changed: item, same: undefined } : { changed: undefined, same: item };
     },
   },
   hash: {
@@ -400,6 +468,89 @@ export const NODE_TYPES = {
       return { main: out };
     },
   },
+  ocr: {
+    title: 'OCR (이미지 → 텍스트)', icon: 'globe', color: '#1a7f5a', category: 'AI', backend: true,
+    inputs: ['main'], outputs: ['main'],
+    defaults: { image: '{{ $json.image }}', engine: 'auto', lang: 'kor+eng', minConfidence: '60' },
+    fields: [
+      { key: 'image', label: '이미지 — 파일 경로 · data:URL · base64', type: 'text' },
+      { key: 'engine', label: '엔진 — auto: Paddle 서버가 있으면 Paddle(실측 97%), 없으면 tesseract(67%)', type: 'select', options: ['auto', 'paddle', 'ensemble', 'tesseract'] },
+      { key: 'lang', label: '언어 (tesseract)', type: 'select', options: ['kor+eng', 'kor', 'eng', 'jpn', 'chi_sim'] },
+      { key: 'minConfidence', label: '최소 신뢰도 (0~100, tesseract) — 낮은 단어는 버린다', type: 'text' },
+    ],
+    summary: (p) => `OCR ${p.engine || 'auto'} · ${p.lang}`,
+    // Paddle 서버(server/ocr/paddle_ocr_server.py)가 없으면 tesseract.js — 오프라인, API 키 불필요
+    run: async (i, p) => {
+      const r = await callIntegration('ocr', { image: p.image, engine: p.engine || 'auto', lang: p.lang, minConfidence: p.minConfidence });
+      return { main: { ...(i.main || {}), ocr: r } };
+    },
+  },
+  plateRecognize: {
+    title: '번호판 인식 (YOLO11+PaddleOCR)', icon: 'globe', color: '#1a7f5a', category: 'AI', backend: true,
+    inputs: ['main'], outputs: ['main'],
+    defaults: { image: '{{ $json.image }}', baseUrl: '', minConfidence: '0.5', timeoutMs: '30000' },
+    fields: [
+      { key: 'image', label: '이미지 — 파일 경로 · data:URL · base64', type: 'text' },
+      { key: 'baseUrl', label: '번호판 서버 주소 (비우면 http://localhost:5000)', type: 'text' },
+      { key: 'minConfidence', label: '최소 신뢰도 (0~1)', type: 'text' },
+      { key: 'timeoutMs', label: '타임아웃 (ms)', type: 'text' },
+    ],
+    summary: (p) => `번호판 인식 (신뢰도 ≥ ${p.minConfidence || 0})`,
+    // 외부 yolo11 FastAPI 서버 호출. 서버가 없으면 시뮬레이션으로 떨어진다.
+    run: async (i, p) => {
+      const r = await callIntegration('plateRecognize', {
+        image: p.image, baseUrl: p.baseUrl,
+        minConfidence: p.minConfidence, timeoutMs: p.timeoutMs,
+      });
+      return { main: { ...(i.main || {}), plates: r } };
+    },
+  },
+  screenUnderstand: {
+    title: '화면 이해 (무슨 기능인지)', icon: 'sparkles', color: '#7c5cbf', category: 'AI', backend: true,
+    inputs: ['main'], outputs: ['main'],
+    defaults: { image: '{{ $json.image }}', lang: 'kor+eng', hint: '', withOcr: 'true' },
+    fields: [
+      { key: 'image', label: '이미지 — 파일 경로 · data:URL · base64', type: 'text' },
+      { key: 'hint', label: '참고 설명 (선택) — 무엇을 찾는지', type: 'textarea' },
+      { key: 'lang', label: 'OCR 언어', type: 'select', options: ['kor+eng', 'kor', 'eng', 'jpn', 'chi_sim'] },
+      { key: 'withOcr', label: 'OCR 텍스트를 함께 전달 (작은 글씨 인식률↑)', type: 'select', options: ['true', 'false'] },
+    ],
+    summary: () => '화면을 보고 기능·동작을 구조화',
+    // OCR 텍스트 + 이미지를 Claude vision 에 함께 넘겨 JSON 으로 받는다
+    run: async (i, p) => {
+      const r = await callIntegration('screenUnderstand', {
+        image: p.image, lang: p.lang, hint: p.hint, withOcr: p.withOcr !== 'false',
+      });
+      return { main: { ...(i.main || {}), screen: r } };
+    },
+  },
+  socraticRead: {
+    title: '소크라테스식 읽기 (검증된 이해)', icon: 'sparkles', color: '#7c5cbf', category: 'AI', backend: true,
+    inputs: ['main'], outputs: ['main'],
+    defaults: { image: '{{ $json.image }}', text: '', focus: '', title: '', engine: 'auto', lang: 'kor+eng', rounds: '2', learn: 'true', memory: 'true', model: 'claude-sonnet-5' },
+    fields: [
+      { key: 'image', label: '이미지 — 파일 경로 · data:URL · base64 (비우면 텍스트를 읽는다)', type: 'text' },
+      { key: 'text', label: '텍스트 (이미지가 없을 때)', type: 'textarea' },
+      { key: 'focus', label: '특히 알고 싶은 것 (선택)', type: 'text' },
+      { key: 'title', label: '제목 (기억에 출처로 남는다, 선택)', type: 'text' },
+      { key: 'engine', label: 'OCR 엔진', type: 'select', options: ['auto', 'paddle', 'ensemble', 'tesseract'] },
+      { key: 'lang', label: 'OCR 언어 (tesseract)', type: 'select', options: ['kor+eng', 'kor', 'eng', 'jpn', 'chi_sim'] },
+      { key: 'rounds', label: '논박 라운드 — 반박된 답을 다시 묻는 횟수 포함', type: 'select', options: ['1', '2', '3', '4'] },
+      { key: 'learn', label: '실수에서 배우기 (다음 읽기에 반영)', type: 'select', options: ['true', 'false'] },
+      { key: 'memory', label: '장기 기억 — 전에 읽은 것과 연결하고, 검증된 것만 기억한다', type: 'select', options: ['true', 'false'] },
+      { key: 'model', label: '모델', type: 'select', options: AI_MODELS },
+    ],
+    summary: (p) => `스스로 묻고 원문으로 검증 · ${p.rounds || 2}라운드`,
+    // 답은 LLM 이, 인용 대조는 코드가 한다 — 원문에 없는 인용으로 만든 답은 이해에 들어가지 않는다
+    run: async (i, p) => {
+      const r = await callIntegration('socraticRead', {
+        image: p.image, text: p.text, focus: p.focus, engine: p.engine || 'auto', lang: p.lang,
+        rounds: Number(p.rounds) || 2, learn: p.learn !== 'false', memory: p.memory !== 'false', title: p.title, model: p.model,
+        ownerId: i.main?.ownerId || 'owner', // 누구의 기억인가 — 받은 파일은 보낸 사람 것 (코드가 정한다, specs/007)
+      });
+      return { main: { ...(i.main || {}), reading: r } };
+    },
+  },
   stopError: {
     title: '중단 & 오류', icon: 'close', color: '#c0563f', category: '흐름 제어',
     inputs: ['main'], outputs: [],
@@ -409,6 +560,22 @@ export const NODE_TYPES = {
     run: async (_i, p) => { throw new Error(p.message || '중단'); },
   },
 
+  memoryRecall: {
+    title: '기억 검색 (검증된 읽기 기억)', icon: 'search', color: '#7c5cbf', category: 'AI', backend: true,
+    inputs: ['main'], outputs: ['main'],
+    defaults: { query: '{{ $json.query }}', k: '5', types: 'source,fact' },
+    fields: [
+      { key: 'query', label: '찾을 내용 (표현식 지원)', type: 'text' },
+      { key: 'k', label: '최대 개수', type: 'select', options: ['1', '3', '5', '10'] },
+      { key: 'types', label: '종류 — source(원문 조각) · fact(검증된 사실)', type: 'select', options: ['source,fact', 'fact', 'source'] },
+    ],
+    summary: (p) => `기억 검색 · 최대 ${p.k || 5}개`,
+    // 문턱을 못 넘으면 빈 결과 — 관련 없는 기억을 억지로 붙이지 않는다
+    run: async (i, p) => {
+      const r = await callIntegration('memoryRecall', { query: p.query, ownerId: i.main?.ownerId || 'owner', k: Number(p.k) || 5, types: String(p.types || '').split(',').map((t) => t.trim()).filter(Boolean) });
+      return { main: { ...(i.main || {}), memory: r } };
+    },
+  },
   approvalRequest: {
     title: '사람 승인 대기', icon: 'check', color: '#b5651d', category: '흐름 제어', backend: true,
     inputs: ['main'], outputs: ['approved', 'rejected', 'expired'],
@@ -903,78 +1070,6 @@ export const NODE_TYPES = {
       return { main: { ...(i.main || {}), video: r, ...(r?.yt ? { title: r.yt.title, description: r.yt.description, tags: r.yt.tags } : {}) } };
     },
   },
-  memeShort: {
-    title: '한 줄 댓글 밈 쇼츠 렌더', icon: 'play', color: '#16a34a', category: '영상', backend: true,
-    inputs: ['main'], outputs: ['main'],
-    defaults: {
-      episode: '{{ $json.episode }}',
-      itemsJson: '{{ $json.memes }}',
-      hook: '{{ $json.hook }}',
-      titleLine1: '사진보다 웃긴',
-      titleLine2: '댓글 한 줄',
-      personaName: '오덤덤',
-    },
-    fields: [
-      { key: 'episode', label: '몇 탄 (표현식 지원)', type: 'text' },
-      { key: 'itemsJson', label: '밈 배열 [{kind,setupLines,emphasis,image,punch,credit,attribution}] 2~8개 (표현식 지원)', type: 'textarea' },
-      { key: 'hook', label: '업로드 제목 앞부분 — 1번 밈 상황 한마디 (회차마다 달라야 한다)', type: 'text' },
-      { key: 'titleLine1', label: '화면 상단 제목 1줄 (흰색)', type: 'text' },
-      { key: 'titleLine2', label: '화면 상단 제목 2줄 (포인트색)', type: 'text' },
-      { key: 'personaName', label: '댓글 다는 캐릭터 이름', type: 'text' },
-    ],
-    summary: (p) => `한 줄 댓글 밈 ${p.episode}탄`,
-    // 사진은 미리 골라 둔 것만 받는다(image 경로) — 검색 결과에서 자동으로 고르지 않는다.
-    // 출력에 title/description/tags 를 얹어 두면 YouTube 업로드 노드 기본값이 그대로 물린다
-    run: async (i, p) => {
-      let items = p.itemsJson;
-      if (typeof items === 'string') { try { items = JSON.parse(items); } catch { items = []; } }
-      const r = await callIntegration('memeShort', {
-        episode: Number(p.episode) || 1, items, hook: p.hook || undefined,
-        titleLine1: p.titleLine1, titleLine2: p.titleLine2, persona: { name: p.personaName || '오덤덤' },
-      });
-      if (r?.ok === false) throw new Error(`밈 쇼츠 렌더 실패: ${r.error}`);
-      return { main: { ...(i.main || {}), video: r, ...(r?.yt ? { title: r.yt.title, description: r.yt.description, tags: r.yt.tags } : {}) } };
-    },
-  },
-  clipStory: {
-    title: '실영상 쇼츠 렌더 (영상 하나 = 이야기 하나)', icon: 'play', color: '#5cc8ff', category: '영상', backend: true,
-    inputs: ['main'], outputs: ['main'],
-    defaults: {
-      slug: '{{ $json.slug }}',
-      uploadTitle: '{{ $json.uploadTitle }}',
-      titleLine1: '{{ $json.titleLine1 }}',
-      titleLine2: '{{ $json.titleLine2 }}',
-      credit: '{{ $json.credit }}',
-      attributionsJson: '{{ $json.attributions }}',
-      beatsJson: '{{ $json.beats }}',
-      tags: '',
-      clipVolume: '0',
-    },
-    fields: [
-      { key: 'slug', label: '파일 이름에 쓸 영문 약칭', type: 'text' },
-      { key: 'uploadTitle', label: '업로드 제목 (제목 카드에도 뜬다)', type: 'text' },
-      { key: 'titleLine1', label: '화면 상단 1줄 (흰색)', type: 'text' },
-      { key: 'titleLine2', label: '화면 상단 2줄 (포인트색)', type: 'text' },
-      { key: 'credit', label: '화면 출처 — 작품명·연도·라이선스', type: 'text' },
-      { key: 'attributionsJson', label: '설명란 출처 배열 (표현식 지원)', type: 'textarea' },
-      { key: 'beatsJson', label: '자막 배열 [{text,style,video,startSec,fit}] (표현식 지원)', type: 'textarea' },
-      { key: 'tags', label: '태그 (쉼표구분)', type: 'text' },
-      { key: 'clipVolume', label: '원본 소리 (같은 출처의 기록일 때만 0보다 크게)', type: 'text' },
-    ],
-    summary: (p) => `실영상 쇼츠: ${p.uploadTitle || p.slug}`,
-    // 출력에 title/description/tags 를 얹어 두면 YouTube 업로드 노드 기본값이 그대로 물린다
-    run: async (i, p) => {
-      const parse = (v, fb) => { if (typeof v !== 'string') return v ?? fb; try { return JSON.parse(v); } catch { return fb; } };
-      const r = await callIntegration('clipStory', {
-        slug: p.slug, uploadTitle: p.uploadTitle, titleLine1: p.titleLine1, titleLine2: p.titleLine2,
-        credit: p.credit, attributions: parse(p.attributionsJson, []), beats: parse(p.beatsJson, []),
-        tags: String(p.tags || '').split(',').map((s) => s.trim()).filter(Boolean),
-        clipVolume: Number(p.clipVolume) || 0,
-      });
-      if (r?.ok === false) throw new Error(`실영상 쇼츠 렌더 실패: ${r.error}`);
-      return { main: { ...(i.main || {}), video: r, ...(r?.yt ? { title: r.yt.title, description: r.yt.description, tags: r.yt.tags } : {}) } };
-    },
-  },
   youtubeUpload: {
     title: 'YouTube 업로드', icon: 'globe', color: '#ff0000', category: '영상', backend: true,
     inputs: ['main'], outputs: ['main'],
@@ -1026,161 +1121,6 @@ export const NODE_TYPES = {
         videoId: p.videoId, template: p.template, at: p.publishAt || undefined,
       });
       return { main: { ...(i.main || {}), verifiedComment: r } };
-    },
-  },
-
-  /* ---------------- 수익화 (쿠팡파트너스 × 블로그 공장) ---------------- */
-  coupangProducts: {
-    title: '쿠팡 상품 조회', icon: 'search', color: '#c0392b', category: '수익화', backend: true,
-    inputs: ['main'], outputs: ['main'],
-    defaults: { source: 'goldbox', category: '뷰티', keyword: '', limit: '10', minPrice: '10000', sort: 'rank' },
-    fields: [
-      { key: 'source', label: '소스', type: 'select', options: ['goldbox', 'best', 'search'] },
-      { key: 'category', label: '카테고리 (best일 때) — 위쪽일수록 파트너스 요율이 높은 편', type: 'select', options: ['뷰티', '여성패션', '남성패션', '출산/유아동', '스포츠/레저', '반려동물용품', '헬스/건강식품', '완구/취미', '식품', '주방용품', '생활용품', '홈인테리어', '문구/오피스', '자동차용품', '도서/음반', '가전디지털'] },
-      { key: 'keyword', label: '검색어 (search일 때 · 표현식 지원)', type: 'text' },
-      { key: 'limit', label: '개수', type: 'select', options: ['5', '8', '10', '15', '20'] },
-      { key: 'minPrice', label: '최소 가격 (객단가 필터 · 원)', type: 'text' },
-      { key: 'sort', label: '정렬', type: 'select', options: ['rank', 'priceDesc'] },
-    ],
-    summary: (p) => `쿠팡 ${p.source}${p.source === 'best' ? `·${p.category}` : ''} (₩${p.minPrice}+)`,
-    run: async (i, p) => {
-      const r = await callIntegration('coupangProducts', {
-        source: p.source, category: p.category, keyword: p.keyword,
-        limit: p.limit, minPrice: p.minPrice, sort: p.sort,
-      });
-      return { main: { ...(i.main || {}), ...r } };
-    },
-  },
-  coupangReport: {
-    title: '쿠팡 실적 리포트 (객단가)', icon: 'list', color: '#c0392b', category: '수익화', backend: true,
-    inputs: ['main'], outputs: ['main'],
-    defaults: { type: 'orders', days: '30' },
-    fields: [
-      { key: 'type', label: '리포트 종류', type: 'select', options: ['orders', 'clicks', 'commission'] },
-      { key: 'days', label: '기간 (일)', type: 'select', options: ['7', '14', '30', '60', '90'] },
-    ],
-    summary: (p) => `실적 ${p.type} · ${p.days}일`,
-    run: async (i, p) => {
-      const r = await callIntegration('coupangReport', { type: p.type, days: p.days });
-      return { main: { ...(i.main || {}), report: r } };
-    },
-  },
-  blogPost: {
-    title: '블로그 포스트 생성', icon: 'edit', color: '#2f6fed', category: '수익화', backend: true,
-    inputs: ['main'], outputs: ['main'],
-    defaults: {
-      productsPath: '{{ $json.products }}',
-      keyword: '오늘의 특가',
-      title: '',
-      style: 'ranking',
-      network: 'coupang',
-      cta: '오늘 가격 확인하기',
-      useLLM: 'auto',
-    },
-    fields: [
-      { key: 'productsPath', label: '상품 배열 (표현식)', type: 'text' },
-      { key: 'keyword', label: '주제 키워드 (제목·서론에 사용)', type: 'text' },
-      { key: 'title', label: '제목 직접 지정 (비우면 자동)', type: 'text' },
-      { key: 'style', label: '글 형식', type: 'select', options: ['ranking', 'review'] },
-      { key: 'network', label: '제휴 채널 (공정위 문구 자동 선택)', type: 'select', options: ['coupang', 'ali', 'linkprice'] },
-      { key: 'cta', label: '버튼 문구', type: 'text' },
-      { key: 'useLLM', label: 'AI 서론/코멘트 (키 있을 때)', type: 'select', options: ['auto', 'off'] },
-    ],
-    summary: (p) => `포스트: ${p.keyword} (${p.style}·${p.network || 'coupang'})`,
-    run: async (i, p) => {
-      const r = await callIntegration('blogPost', {
-        products: p.productsPath, keyword: p.keyword, title: p.title,
-        style: p.style, network: p.network, cta: p.cta, useLLM: p.useLLM,
-      });
-      return { main: { ...(i.main || {}), post: r } };
-    },
-  },
-  aliProducts: {
-    title: '알리 상품 조회', icon: 'search', color: '#e43225', category: '수익화', backend: true,
-    inputs: ['main'], outputs: ['main'],
-    defaults: { source: 'hot', keyword: '', limit: '8', minPrice: '5000', minCommission: '5' },
-    fields: [
-      { key: 'source', label: '소스 (hot=핫딜 추천)', type: 'select', options: ['hot', 'search'] },
-      { key: 'keyword', label: '검색어 (search일 때 · 표현식 지원)', type: 'text' },
-      { key: 'limit', label: '개수', type: 'select', options: ['5', '8', '10', '15'] },
-      { key: 'minPrice', label: '최소 가격 (원)', type: 'text' },
-      { key: 'minCommission', label: '최소 수수료 % (미등록 1% 함정 회피)', type: 'select', options: ['3', '5', '7'] },
-    ],
-    summary: (p) => `알리 ${p.source} (수수료 ${p.minCommission}%+)`,
-    run: async (i, p) => {
-      const r = await callIntegration('aliProducts', {
-        source: p.source, keyword: p.keyword, limit: p.limit, minPrice: p.minPrice, minCommission: p.minCommission,
-      });
-      return { main: { ...(i.main || {}), ...r } };
-    },
-  },
-  linkpriceMerchants: {
-    title: '링크프라이스 머천트 조회', icon: 'list', color: '#0b8457', category: '수익화', backend: true,
-    inputs: ['main'], outputs: ['main'],
-    defaults: { status: 'apr', type: 'cps' },
-    fields: [
-      { key: 'status', label: '범위 (apr=승인된 것만)', type: 'select', options: ['apr', 'all'] },
-      { key: 'type', label: '유형', type: 'select', options: ['cps', 'cpa'] },
-    ],
-    summary: (p) => `머천트 ${p.status}/${p.type}`,
-    run: async (i, p) => {
-      const r = await callIntegration('linkpriceMerchants', { status: p.status, type: p.type });
-      return { main: { ...(i.main || {}), ...r } };
-    },
-  },
-  linkpriceDeeplink: {
-    title: '링크프라이스 딥링크 변환', icon: 'key', color: '#0b8457', category: '수익화', backend: true,
-    inputs: ['main'], outputs: ['main'],
-    defaults: { productsPath: '{{ $json.products }}', merchantId: 'gmarket' },
-    fields: [
-      { key: 'productsPath', label: '상품 배열 (url 필드 필수 · 표현식)', type: 'text' },
-      { key: 'merchantId', label: '머천트 ID (머천트 조회로 확인, 예: gmarket)', type: 'text' },
-    ],
-    summary: (p) => `딥링크 → ${p.merchantId}`,
-    run: async (i, p) => {
-      const r = await callIntegration('linkpriceDeeplink', { products: p.productsPath, merchantId: p.merchantId });
-      return { main: { ...(i.main || {}), ...r } };
-    },
-  },
-  linkpriceReport: {
-    title: '링크프라이스 실적 조회', icon: 'list', color: '#0b8457', category: '수익화', backend: true,
-    inputs: ['main'], outputs: ['main'],
-    defaults: { period: '' },
-    fields: [
-      { key: 'period', label: '기간 (YYYYMM 또는 YYYYMMDD · 비우면 이번 달)', type: 'text' },
-    ],
-    summary: (p) => `실적 ${p.period || '이번 달'}`,
-    run: async (i, p) => {
-      const r = await callIntegration('linkpriceReport', { period: p.period });
-      return { main: { ...(i.main || {}), report: r } };
-    },
-  },
-  bloggerPublish: {
-    title: 'Blogger 발행', icon: 'globe', color: '#ff8f00', category: '수익화', backend: true,
-    inputs: ['main'], outputs: ['main'],
-    defaults: {
-      blogId: '',
-      title: '{{ $json.post.title }}',
-      html: '{{ $json.post.html }}',
-      labels: '{{ $json.post.tags }}',
-      metaDescription: '{{ $json.post.metaDescription }}',
-      isDraft: 'true',
-    },
-    fields: [
-      { key: 'blogId', label: '블로그 ID (비우면 .env BLOGGER_BLOG_ID)', type: 'text' },
-      { key: 'title', label: '제목 (표현식)', type: 'text' },
-      { key: 'html', label: '본문 HTML (표현식)', type: 'textarea' },
-      { key: 'labels', label: '라벨 (쉼표 또는 표현식)', type: 'text' },
-      { key: 'metaDescription', label: '검색 설명 (비우면 서론에서 자동)', type: 'text' },
-      { key: 'isDraft', label: '초안으로 저장', type: 'select', options: ['true', 'false'] },
-    ],
-    summary: (p) => `Blogger ${p.isDraft === 'false' ? '공개 발행' : '초안 저장'}`,
-    run: async (i, p) => {
-      const r = await callIntegration('bloggerPublish', {
-        blogId: p.blogId, title: p.title, html: p.html, labels: p.labels, isDraft: p.isDraft,
-        metaDescription: p.metaDescription, keyword: i.main?.keyword || '', network: i.main?.network || '',
-      });
-      return { main: { ...(i.main || {}), published: r } };
     },
   },
 

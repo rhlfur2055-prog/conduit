@@ -1,10 +1,26 @@
 {
-  "name": "flowforge",
+  "name": "conduit",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "노드 기반 워크플로 자동화 플랫폼 — 캔버스에서 만들고, 서버에서 돌린다",
   "type": "module",
+  "license": "MIT",
+  "author": "Donggeun Lim <rhlfur2055@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rhlfur2055-prog/conduit.git"
+  },
+  "homepage": "https://github.com/rhlfur2055-prog/conduit#readme",
+  "workspaces": [
+    "server",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
+    "server": "node server/index.js",
     "build": "vite build",
     "lint": "oxlint",
     "test": "vitest run",

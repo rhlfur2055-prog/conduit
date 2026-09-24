@@ -22,6 +22,8 @@ export function authFetch(url, opts = {}) {
 
 const post = (url, body) =>
   authFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const put = (url, body) =>
+  authFetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
 // 2xx 가 아니면 서버의 error 메시지로 예외를 던진다.
 // (에러 객체가 목록·워크플로 자리에 들어가 화면이 깨지지 않게 — 호출부의 catch 가 처리한다)
@@ -48,4 +50,25 @@ export const api = {
   replayDlq: (id) => authFetch('/api/dlq/' + id + '/replay', { method: 'POST' }).then(json),
   deleteDlq: (id) => authFetch('/api/dlq/' + id, { method: 'DELETE' }).then(ok),
   listMcpTools: () => authFetch('/api/mcp/tools').then(ok),
+
+  // 쉬운 시작 (specs/005)
+  agentStatus: () => authFetch('/api/agent/status').then(ok),
+  agentActivity: () => authFetch('/api/agent/activity').then(ok),
+  agentQuickstart: () => post('/api/agent/quickstart', {}).then(ok),
+  agentClaudeKey: (apiKey) => post('/api/agent/claude-key', { apiKey }).then(ok),
+  agentTelegramToken: (botToken) => post('/api/agent/telegram-token', { botToken }).then(ok),
+  agentTelegramAllow: (chatId, asOwner) => post('/api/agent/telegram/allow', { chatId, ...(asOwner ? { asOwner: true } : {}) }).then(ok),
+  agentTelegramRemove: (chatId) => post('/api/agent/telegram/remove', { chatId }).then(ok),
+  agentTelegramSet: (patch) => put('/api/agent/telegram', patch).then(ok),
+  agentHeartbeatEvery: (everyMin) => put('/api/agent/heartbeat', { everyMin }).then(ok),
+  runHeartbeat: () => post('/api/heartbeat', {}).then(ok),
+  decideApproval: (id, decision) => post(`/api/approvals/${id}/decide`, { decision }).then(ok),
+  listTemplates: (lang) => authFetch(`/api/templates${lang ? `?lang=${lang}` : ''}`).then(ok),
+  createTemplate: (id, params, lang) => post(`/api/templates/${id}`, { params, lang }).then(ok),
+  assistant: (text, lang) => post('/api/assistant', { text, lang }).then(ok),
+  people: () => authFetch('/api/people').then(ok),
+  savePerson: (id, patch) => put(`/api/people/${id}`, patch).then(ok),
+  assistantConfirm: (id, yes) => post(`/api/assistant/confirm/${id}`, { yes }).then(ok),
+  agentNotify: (notify) => put('/api/agent/notify', { notify }).then(ok),
+  decidePending: (id, approve) => post(`/api/heartbeat/pending/${id}/${approve ? 'approve' : 'reject'}`, {}).then(ok),
 };

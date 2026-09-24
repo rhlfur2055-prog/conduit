@@ -14,7 +14,11 @@ import { createApp } from './app.js';
 import { authMode } from './auth.js';
 import { codeExecutionAllowed } from './policy.js';
 import { registerAll } from './runtime.js';
-import { startTelegramApprovals, startApprovalTimer, recoverAtBoot } from './approvals.js';
+import { startApprovalTimer, recoverAtBoot } from './approvals.js';
+import { closeOcr } from './vision.js';
+import { startHeartbeat, runHeartbeat } from './heartbeat.js';
+import { startTelegram, telegramMode } from './telegramChannel.js';
+import { applyHeartbeatSetting } from './quickstart.js';
 
 // 직접 실행(node server/index.js)인지, 테스트 등에서 import 했는지
 const isMain = !!process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -39,12 +43,24 @@ if (isMain) {
     console.log(`  코드 실행: ${codeExecutionAllowed() ? '켜짐' : '꺼짐 (CONDUIT_ALLOW_CODE)'}`);
     registerAll();
     await recoverAtBoot().catch((e) => console.warn('[approval] 기동 정리 실패:', e.message));
-    // 사람 승인 게이트 — 텔레그램 롱폴링(공개 URL 불필요) + 리마인드/만료 점검
-    if (startTelegramApprovals()) {
-      startApprovalTimer();
-      console.log('  텔레그램 승인: 롱폴링 시작 (TELEGRAM_BOT_TOKEN 설정됨)');
+    // 텔레그램 — 승인 버튼 + 휴대폰↔PC 주고받기 (롱폴링, 공개 URL 불필요). 토큰은 .env 또는 쉬운 시작 화면
+    if (await startTelegram({ onReceived: () => runHeartbeat() })) {
+      console.log(`  텔레그램: 연결됨 · 모드 ${telegramMode()}`);
     } else {
-      console.log('  텔레그램 승인: 꺼짐 (TELEGRAM_BOT_TOKEN 없음)');
+      console.log('  텔레그램: 꺼짐 (토큰 없음 — 쉬운 시작 화면에서 연결할 수 있다)');
     }
+    startApprovalTimer();
+    // 하트비트 — 목표를 보고 스스로 일을 시작한다 (specs/004)
+    const hbEnv = startHeartbeat();
+    const hbSet = hbEnv ? null : applyHeartbeatSetting();
+    console.log(hbEnv ? `  자동 확인(하트비트): ${process.env.CONDUIT_HEARTBEAT}` : hbSet ? `  자동 확인(하트비트): ${hbSet} (쉬운 시작 설정)` : '  자동 확인(하트비트): 꺼짐');
   });
+
+  // OCR 워커(tesseract.js)는 한 번 뜨면 프로세스를 붙잡고 있으므로 종료 시 정리한다
+  for (const sig of ['SIGINT', 'SIGTERM']) {
+    process.on(sig, async () => {
+      await closeOcr();
+      process.exit(0);
+    });
+  }
 }

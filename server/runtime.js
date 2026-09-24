@@ -108,6 +108,9 @@ export async function execute(workflow, { seed = {}, trigger = 'manual' } = {}) 
     statuses,
   });
 
+  // 휴대폰 알림 (실패 · 설정에 따라 완료) — 응답을 막지 않도록 비동기, 순환 import 를 피해 필요할 때 불러온다
+  import('./telegramChannel.js').then((m) => m.notifyExecution({ execution: exec, workflow, trigger })).catch(() => {});
+
   // 실패 시 Error Trigger 워크플로 발동 (에러 핸들러 자신의 실패는 제외) — 응답을 막지 않도록 비동기
   if (hadError && trigger !== 'error') {
     const payload = buildErrorPayload({ workflow, exec, statuses, trigger });
@@ -138,14 +141,15 @@ export function registerSchedules(wf) {
   if (!wf.active) return;
   for (const node of wf.nodes || []) {
     if (node.data.kind !== 'scheduleTrigger') continue;
-    const expr = CRON_BY_INTERVAL[node.data.params?.interval] || null;
+    const p = node.data.params || {};
+    const expr = p.interval === '직접 지정' ? String(p.cron || '').trim() : (CRON_BY_INTERVAL[p.interval] || null);
     if (!expr || !cron.validate(expr)) continue;
     const task = cron.schedule(expr, async () => {
       const fresh = Workflows.get(wf.id);
       if (!fresh || !fresh.active) return;
-      const seed = { [node.id]: { main: { triggeredAt: new Date().toISOString(), interval: node.data.params.interval } } };
+      const seed = { [node.id]: { main: { triggeredAt: new Date().toISOString(), interval: p.interval === '직접 지정' ? expr : p.interval } } };
       await execute(fresh, { seed, trigger: 'schedule' });
-      console.log(`[cron] ${wf.name} 실행 (${node.data.params.interval})`);
+      console.log(`[cron] ${wf.name} 실행 (${expr})`);
     });
     scheduled.set(`${wf.id}:${node.id}`, task);
   }

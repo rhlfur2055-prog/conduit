@@ -20,7 +20,7 @@ export function getApiKey() {
   return null;
 }
 
-export async function callLLM({ system, prompt, model, messages }) {
+export async function callLLM({ system, prompt, model, messages, maxTokens = 1024 }) {
   const key = getApiKey();
   const useModel = model || 'claude-sonnet-5';
 
@@ -33,7 +33,9 @@ export async function callLLM({ system, prompt, model, messages }) {
 
   const msgs = messages || [{ role: 'user', content: prompt || '' }];
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    // ANTHROPIC_BASE_URL — 프록시·게이트웨이·테스트용 가짜 서버 (Anthropic SDK 와 같은 이름)
+    const base = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/+$/, '');
+    const res = await fetch(`${base}/v1/messages`, {
       method: 'POST',
       headers: {
         'x-api-key': key,
@@ -42,7 +44,7 @@ export async function callLLM({ system, prompt, model, messages }) {
       },
       body: JSON.stringify({
         model: useModel,
-        max_tokens: 1024,
+        max_tokens: Number(maxTokens) || 1024,
         system: system || undefined,
         messages: msgs,
       }),

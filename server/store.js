@@ -90,6 +90,8 @@ export const Workflows = {
       nodes: wf.nodes ?? existing?.nodes ?? [],
       edges: wf.edges ?? existing?.edges ?? [],
       active: wf.active ?? existing?.active ?? false,
+      // 누가 만들었나 (specs/007) — 없으면 PC 주인 것
+      ...((wf.ownerId ?? existing?.ownerId) ? { ownerId: wf.ownerId ?? existing.ownerId } : {}),
       createdAt: existing?.createdAt || now,
       updatedAt: now,
     };
@@ -241,6 +243,157 @@ export const Approvals = {
     writeJSON('approvals.json', list);
     return rec;
   },
+};
+
+/* ---------- 사람 (specs/007) — 텔레그램 채팅 하나 = 한 사람, PC 화면 = owner ---------- */
+export const People = {
+  all: () => readJSON('people.json', []),
+  get: (id) => People.all().find((p) => p.id === id) || null,
+  byChat: (chatId) => (chatId === undefined || chatId === null ? null : People.all().find((p) => p.chatId === String(chatId)) || null),
+  save(p) {
+    const list = People.all();
+    const id = p.id || (p.chatId ? `p_${p.chatId}` : uid('p'));
+    const prev = list.find((x) => x.id === id);
+    const rec = {
+      id, role: id === 'owner' ? 'owner' : 'member', lang: 'ko', name: '', wake: null, interests: [], chatId: null, onboarding: null,
+      ...prev, ...p, id, updatedAt: new Date().toISOString(), createdAt: prev?.createdAt || new Date().toISOString(),
+    };
+    if (rec.chatId !== null && rec.chatId !== undefined) rec.chatId = String(rec.chatId);
+    writeJSON('people.json', prev ? list.map((x) => (x.id === id ? rec : x)) : [...list, rec]);
+    return rec;
+  },
+  /** PC 주인 — 없으면 만든다 */
+  owner: () => People.get('owner') || People.save({ id: 'owner', role: 'owner', lang: 'ko', name: '' }),
+};
+
+/* ---------- 변경 감지 (changeDetect 노드) — 키별 지난 값의 해시 ---------- */
+export const ChangeState = {
+  all: () => readJSON('change-state.json', {}),
+  get: (key) => ChangeState.all()[key] || null,
+  set(key, hash) { const m = ChangeState.all(); m[key] = { hash, at: new Date().toISOString() }; writeJSON('change-state.json', m); },
+};
+
+/* ---------- 설정 (화면에서 바꾸는 값 — 비밀값은 여기 두지 않고 Credentials 에 암호화) ---------- */
+export const Settings = {
+  all: () => readJSON('settings.json', {}),
+  get: (section) => Settings.all()[section] || {},
+  set(section, patch) {
+    const all = Settings.all();
+    all[section] = { ...(all[section] || {}), ...patch };
+    writeJSON('settings.json', all);
+    return all[section];
+  },
+};
+
+/* ---------- 목표 · 하트비트 (specs/004-goals-heartbeat) ----------
+   목표는 사람이 정한다. 하트비트 기록은 다음 하트비트의 "최근 결정" 으로 들어간다. */
+const HEARTBEATS_MAX = 200;
+
+export const Goals = {
+  all: () => readJSON('goals.json', []),
+  get: (id) => Goals.all().find((g) => g.id === id) || null,
+  save(g) {
+    const list = Goals.all();
+    const id = g.id || uid('g');
+    const prev = list.find((x) => x.id === id);
+    const rec = {
+      id,
+      text: String(g.text ?? prev?.text ?? '').slice(0, 500),
+      workflows: Array.isArray(g.workflows) ? g.workflows.map(String) : (prev?.workflows ?? []),
+      inbox: g.inbox ?? prev?.inbox ?? null,
+      cadenceMin: Number(g.cadenceMin ?? prev?.cadenceMin ?? 0) || 0,
+      requireApproval: !!(g.requireApproval ?? prev?.requireApproval ?? false),
+      active: g.active ?? prev?.active ?? true,
+      createdAt: prev?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    writeJSON('goals.json', prev ? list.map((x) => (x.id === id ? rec : x)) : [...list, rec]);
+    return rec;
+  },
+  remove(id) { writeJSON('goals.json', Goals.all().filter((g) => g.id !== id)); },
+};
+
+export const Heartbeats = {
+  all: () => readJSON('heartbeats.json', []),
+  add(rec) {
+    const full = { id: uid('hb'), at: new Date().toISOString(), ...rec };
+    writeJSON('heartbeats.json', [full, ...Heartbeats.all()].slice(0, HEARTBEATS_MAX));
+    return full;
+  },
+};
+
+/** 받은편지함에서 이미 다룬 파일 (경로·크기·수정시각으로 구분 — 같은 이름으로 새 파일이 오면 다시 본다) */
+export const InboxSeen = {
+  all: () => readJSON('inbox-seen.json', {}),
+  has: (key) => key in InboxSeen.all(),
+  mark(key, info) { const m = InboxSeen.all(); m[key] = { at: new Date().toISOString(), ...info }; writeJSON('inbox-seen.json', m); },
+};
+
+/** 사람 승인을 기다리는 하트비트 제안 */
+export const PendingActions = {
+  all: () => readJSON('pending-actions.json', []),
+  get: (id) => PendingActions.all().find((p) => p.id === id) || null,
+  add(rec) {
+    const full = { id: uid('pa'), status: 'pending', createdAt: new Date().toISOString(), ...rec };
+    writeJSON('pending-actions.json', [full, ...PendingActions.all()].slice(0, 200));
+    return full;
+  },
+  update(id, patch) {
+    const list = PendingActions.all();
+    const rec = list.find((p) => p.id === id);
+    if (!rec) return null;
+    Object.assign(rec, patch);
+    writeJSON('pending-actions.json', list);
+    return rec;
+  },
+};
+
+/* ---------- 장기 기억 (검증된 읽기 기억 · specs/001-verified-memory) ----------
+   원문 조각(source)과 검증된 사실(fact)만 들어온다. key(정규화 텍스트)가 같으면 다시 넣지 않는다. */
+export const Memory = {
+  all: () => readJSON('memory.json', []),
+  add(entries) {
+    const list = Memory.all();
+    const keys = new Set(list.map((m) => m.key));
+    const added = [];
+    for (const e of entries) {
+      if (!e?.key || keys.has(e.key)) continue;
+      const rec = { id: uid('m'), createdAt: new Date().toISOString(), ...e };
+      keys.add(e.key);
+      list.push(rec);
+      added.push(rec);
+    }
+    if (added.length) writeJSON('memory.json', list);
+    return added;
+  },
+  reset() { writeJSON('memory.json', []); },
+};
+
+/* ---------- 읽기 기억 (socraticRead 가 실수에서 배운 것) ----------
+   모델 가중치는 바꿀 수 없으니, 확인된 실수를 모아 다음 읽기의 프롬프트에 넣는다.
+   - confusions : OCR 이 잘못 읽고 대조 단계에서 바로잡힌 글자 쌍 ("라→나": 횟수)
+   - mistakes   : 검증기에 걸린 인용 실수 종류별 횟수 (paraphrased · wrong_line · fabricated)
+   - examples   : 최근 실수 사례 (프롬프트에 그대로 보여 준다) */
+const READING_EXAMPLES_MAX = 20;
+
+export const ReadingMemory = {
+  get: () => readJSON('reading-memory.json', { confusions: {}, mistakes: {}, examples: [], runs: 0 }),
+  record({ confusions = [], mistakes = [] } = {}) {
+    const m = ReadingMemory.get();
+    for (const c of confusions) {
+      const key = `${c.from}→${c.to}`;
+      m.confusions[key] = (m.confusions[key] || 0) + 1;
+    }
+    for (const x of mistakes) {
+      m.mistakes[x.kind] = (m.mistakes[x.kind] || 0) + 1;
+      m.examples = [{ kind: x.kind, quote: x.quote, line: x.line, at: new Date().toISOString() }, ...m.examples]
+        .slice(0, READING_EXAMPLES_MAX);
+    }
+    m.runs = (m.runs || 0) + 1;
+    writeJSON('reading-memory.json', m);
+    return m;
+  },
+  reset() { writeJSON('reading-memory.json', { confusions: {}, mistakes: {}, examples: [], runs: 0 }); },
 };
 
 /* ---------- 크리덴셜 (data 는 암호화 저장) ---------- */

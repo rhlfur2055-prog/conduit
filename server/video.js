@@ -1,5 +1,5 @@
 // ============================================================
-// 영상 렌더 브리지 — 로컬 Remotion 파이프라인(C:/workflow/video-pipeline)으로
+// 영상 렌더 브리지 — 로컬 Remotion 파이프라인(CONDUIT_VIDEO_PIPELINE_DIR)으로
 // 데이터 랭킹 쇼츠를 실제 렌더링한다. (n8n은 외부 유료 API가 필요한 부분)
 //   렌더: npx remotion render → ffmpeg 후처리(H.264 CRF23, faststart) → 썸네일
 // ============================================================
@@ -7,8 +7,7 @@ import { runCommand } from './spawn.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const PIPELINE_DIR = 'C:/workflow/video-pipeline';
-const OUT_DIR = path.join(PIPELINE_DIR, 'out');
+import { PIPELINE_DIR, OUT_DIR } from './videoPipeline.js';
 
 const run = (cmd, args, cwd, timeoutMs) => runCommand(cmd, args, { cwd, timeoutMs });
 
@@ -90,7 +89,7 @@ export async function renderSpinTest({ title, subtitle, sections, voice, modelSr
 }
 
 /** 라운드에서 기본 내레이션 문장 생성 (round.qText/aText 로 덮어쓰기 가능) */
-function quizNarration(rounds, title) {
+function quizNarration(rounds, _title) {
   const num = ['하나', '둘', '셋', '넷', '다섯'];
   return {
     intro: `지금부터 두뇌 나이를 측정해 보겠습니다.`,

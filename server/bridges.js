@@ -12,17 +12,16 @@ import { renderDataShort, renderBrainQuiz, renderSpinTest } from './video.js';
 import { renderMultiLang } from './render-multi.js';
 import { speak } from './tts.js';
 import { fetchRanking } from './rankdata.js';
-import { fetchProducts as coupangProducts, fetchReport as coupangReport } from './coupang.js';
-import { generatePost } from './blogpost.js';
-import { publishPost as bloggerPublish } from './blogger.js';
-import { fetchProducts as aliProducts } from './aliexpress.js';
-import { fetchMerchants as linkpriceMerchants, makeDeeplinks as linkpriceDeeplink, fetchReport as linkpriceReport } from './linkprice.js';
 import { fetchHotTopics } from './hottopics.js';
 import { renderIssueBrief } from './render-issue.js';
-import { renderMemeComments } from './render-meme.js';
-import { renderClipStory } from './render-clipstory.js';
 import { requestApproval } from './approvals.js';
 import { telegramSend } from './telegram.js';
+import { understandScreen } from './vision.js';
+import { plateRecognize } from './plateRecognize.js';
+import { socraticRead } from './socratic.js';
+import { readText } from './ocrEnsemble.js';
+import { recall as memoryRecall } from './memory/memory.js';
+import { changeDetect, memoryDigest } from './templates.js';
 
 export function installBridges() {
   globalThis.__conduitLLM = callLLM;
@@ -44,20 +43,17 @@ export function installBridges() {
     verifiedComment: async (args) => VerifiedComments.add(args),
     tts: speak,
     rankData: fetchRanking,
-    coupangProducts,
-    coupangReport,
-    blogPost: generatePost,
-    bloggerPublish,
-    aliProducts,
-    linkpriceMerchants,
-    linkpriceDeeplink,
-    linkpriceReport,
     hotTopics: fetchHotTopics,
     issueShort: renderIssueBrief,
-    memeShort: renderMemeComments,
-    clipStory: renderClipStory,
     approval: requestApproval,   // 사람 승인 대기 — 스냅샷 저장 + 텔레그램 버튼 메시지
     telegram: telegramSend,
+    ocr: (a) => readText(a),
+    screenUnderstand: understandScreen,
+    plateRecognize,
+    socraticRead,
+    memoryRecall,
+    changeDetect,
+    memoryDigest,
     mcp: async ({ credential, tool, args }) => {
       if (!tool) return mcpListTools(credential);
       let parsed = {};

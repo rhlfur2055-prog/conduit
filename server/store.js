@@ -121,14 +121,15 @@ const EXEC_MAX_PER_WORKFLOW = Number(process.env.EXEC_MAX_PER_WORKFLOW) || 30;
 
 const execRow = (r) => r && ({
   id: r.id, at: r.at, workflowId: r.workflow_id, workflowName: r.workflow_name, trigger: r.trigger, status: r.status,
-  logs: parseJson(r.logs, []), statuses: parseJson(r.statuses, {}),
+  durationMs: r.duration_ms ?? null, logs: parseJson(r.logs, []), statuses: parseJson(r.statuses, {}),
 });
 const execInsert = (rec) => db.prepare(
-  `INSERT OR REPLACE INTO executions (id, workflow_id, workflow_name, trigger, status, at, logs, statuses) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-).run(rec.id, bind.text(rec.workflowId), bind.text(rec.workflowName), bind.text(rec.trigger), bind.text(rec.status ?? 'unknown'), rec.at, bind.json(rec.logs ?? []), bind.json(rec.statuses ?? {}));
+  `INSERT OR REPLACE INTO executions (id, workflow_id, workflow_name, trigger, status, at, duration_ms, logs, statuses) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+).run(rec.id, bind.text(rec.workflowId), bind.text(rec.workflowName), bind.text(rec.trigger), bind.text(rec.status ?? 'unknown'), rec.at, bind.int(rec.durationMs), bind.json(rec.logs ?? []), bind.json(rec.statuses ?? {}));
 
 export const Executions = {
   all: () => db.prepare(`SELECT * FROM executions ORDER BY at DESC, rowid DESC`).all().map(execRow),
+  get: (id) => execRow(db.prepare(`SELECT * FROM executions WHERE id = ?`).get(id)) ?? null,
   add(exec) {
     const rec = { id: uid('ex'), at: new Date().toISOString(), ...exec };
     transaction(db, () => {
@@ -210,12 +211,13 @@ export const DLQ = {
       attempts: entry.attempts ?? 1,
       failed_at: new Date().toISOString(),
       replay_status: 'pending',
+      execution_id: entry.executionId ?? null,
     };
     transaction(db, () => {
-      db.prepare(`INSERT INTO dlq (id, workflow_id, workflow_name, node_id, node_kind, item_key, payload, error_code, error_msg, attempts, failed_at, replay_status)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      db.prepare(`INSERT INTO dlq (id, workflow_id, workflow_name, node_id, node_kind, item_key, payload, error_code, error_msg, attempts, failed_at, replay_status, execution_id)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(rec.id, bind.text(rec.workflow_id), bind.text(rec.workflow_name), bind.text(rec.node_id), bind.text(rec.node_kind), bind.text(rec.item_key),
-          bind.json(rec.payload), rec.error_code, rec.error_msg, bind.int(rec.attempts), rec.failed_at, rec.replay_status);
+          bind.json(rec.payload), rec.error_code, rec.error_msg, bind.int(rec.attempts), rec.failed_at, rec.replay_status, bind.text(rec.execution_id));
       db.prepare(`DELETE FROM dlq WHERE rowid NOT IN (SELECT rowid FROM dlq ORDER BY failed_at DESC, rowid DESC LIMIT ?)`).run(DLQ_MAX);
     });
     return rec;
@@ -225,6 +227,7 @@ export const DLQ = {
     return dlqRow(db.prepare(`SELECT * FROM dlq WHERE id = ?`).get(id)) ?? undefined;
   },
   remove(id) { db.prepare(`DELETE FROM dlq WHERE id = ?`).run(id); },
+  forExecution: (execId) => db.prepare(`SELECT * FROM dlq WHERE execution_id = ? ORDER BY failed_at ASC, rowid ASC`).all(execId).map(dlqRow),
 };
 
 /* ---------- 사람 승인 대기 ----------
@@ -244,6 +247,7 @@ const AP_COLS = {
   decision: ['decision', 'text'], editedText: ['edited_text', 'text'], by: ['decided_by', 'text'], decidedAt: ['decided_at', 'text'],
   resumeStatus: ['resume_status', 'text'], resumeError: ['resume_error', 'text'],
   resumeStartedAt: ['resume_started_at', 'text'], resumeEndedAt: ['resume_ended_at', 'text'], resumedExecutionId: ['resumed_execution_id', 'text'],
+  executionId: ['execution_id', 'text'],
 };
 const AP_FIELDS = Object.keys(AP_COLS);
 const apRow = (r) => {
@@ -267,6 +271,10 @@ export const Approvals = {
   all: () => db.prepare(`SELECT * FROM approvals ORDER BY created_at DESC, rowid DESC`).all().map(apRow),
   get: (id) => apRow(db.prepare(`SELECT * FROM approvals WHERE id = ?`).get(id)),
   pending: () => db.prepare(`SELECT * FROM approvals WHERE status = 'pending' ORDER BY created_at DESC, rowid DESC`).all().map(apRow),
+  /** 이 실행 안에서 만들어진 승인 요청들 (추적) */
+  forExecution: (execId) => db.prepare(`SELECT * FROM approvals WHERE execution_id = ? ORDER BY created_at ASC, rowid ASC`).all(execId).map(apRow),
+  /** 이 실행이 어느 승인의 재개였나 (추적) */
+  resumedInto: (execId) => apRow(db.prepare(`SELECT * FROM approvals WHERE resumed_execution_id = ?`).get(execId)),
   add(rec) {
     const full = { id: uid('ap'), status: 'pending', createdAt: new Date().toISOString(), reminded: false, gate: 'node', ...rec };
     for (const k of Object.keys(full)) if (!AP_COLS[k]) throw new Error(`approvals: 모르는 필드 ${k}`);

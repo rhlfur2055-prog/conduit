@@ -163,6 +163,8 @@ export interface StatusDetail {
   input?: Item[];
   error?: string;
   wait?: WaitRequest[];
+  /** seed 로 주입돼 실행하지 않은 노드 (승인 재개·웹훅 페이로드) */
+  injected?: boolean;
 }
 
 /** 외부 주입(웹훅 페이로드·승인 재개): 노드 id → 포트 → 값. 주입된 노드는 실행하지 않는다. */

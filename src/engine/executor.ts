@@ -103,7 +103,7 @@ export async function runFlow(
       const output: PortOutputs = {};
       for (const [port, value] of Object.entries(raw || {})) output[port] = emptyToUndefined(toItems<Item>(value as Item | Item[]));
       results.set(node.id, { status: 'done', output, input: undefined });
-      onStatus(node.id, 'done', { output, input: undefined });
+      onStatus(node.id, 'done', { output, input: undefined, injected: true });
       onLog({ kind: 'ok', msg: `● ${def.title} — ${countItems(output.main)}건 주입` });
       continue;
     }

@@ -63,6 +63,13 @@ Webhook 트리거 노드에서 `signature` 선택 (`none|slack|github|stripe|gen
 - 화면에서는 사이드바 **설정**에 같은 키를 넣으면 됩니다 (이 브라우저에만 저장).
 - 구현: `server/auth.js`, 테스트: `tests/server/auth.test.js` (실제 HTTP 요청으로 401·403·200 확인)
 
+### 실행 추적 (`GET /api/executions/:id/trace`)
+- 실행 id 는 `execute()` 가 돌기 전에 발급한다(`uid('ex')`). 그래서 실행 중에 생긴 승인 요청(`approvals.execution_id`)과 DLQ 항목(`dlq.execution_id`)이 그 실행에 매달린다.
+- 노드마다 `status · attempts(재시도 포함) · ms · failedItems · injected(스냅샷 주입, 재실행 아님) · kind` 를 실행 기록의 `statuses` 에 남긴다. 워크플로가 지워져도 기록만으로 이름이 복원된다.
+- 응답: `execution` · `nodes[]` · `approvals[]`(flow·snapshot 제외) · `resumedFrom`(이 실행이 어느 승인의 재개였나) · `children[]`(이 실행의 승인이 만든 재개 실행) · `deadLetters[]`.
+- 캔버스의 서버 실행(`POST /run/stream`)도 같은 기록을 남기고, 승인 요청도 확정해 보낸다 (전에는 스트리밍 실행에서 승인이 `preparing` 에 머물렀다).
+- 구현: `server/runtime.js`(statusRecorder · enrichStatuses · finalizeWaiting) · `server/routes/workflows.js` · 화면 `src/components/ExecutionsModal.jsx`. 테스트: `tests/server/trace.test.js`
+
 ### 자동 승인 게이트 (`CONDUIT_AI_GATE`)
 - 규칙: 발송 노드(`sends`)로 들어오는 경로 위에 모델 출력 노드(`llm`)가 있고 그 사이에 승인 노드(`approvalRequest`)가 없으면, 실행기가 발송 노드 앞에서 멈추고 `approval` 연동으로 사람에게 묻는다 (`gate: 'auto'` 로 저장). 판정은 `src/engine/gates.ts` — 데이터가 아니라 그래프를 본다.
 - 재개: 승인이면 발송 노드를 실행하되 들어오는 아이템마다 `approval` 을 붙인다(승인 노드와 같은 모양). 거절·만료면 발송 노드를 건너뛴다. 위쪽 노드는 스냅샷으로 주입돼 다시 돌지 않는다. 한 체인에서 이미 승인된 발송 노드 아래의 두 번째 발송은 다시 묻지 않는다.

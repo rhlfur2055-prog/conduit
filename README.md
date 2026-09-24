@@ -114,6 +114,7 @@ Specs with the measurements written back: [`.specify/memory/constitution.md`](.s
 - **Webhooks with HMAC signature verification** (Slack / GitHub / Stripe style), cron and interval schedules.
 - **Security defaults** — API-key auth with `timingSafeEqual` (local-only when no key is set), DNS-rebinding and cross-origin blocked, secrets encrypted at rest (AES-256-GCM) and never returned by the API, code execution can be disabled on servers.
 - **Ops** — GitHub Actions on every push, single-container Docker.
+- **Trace one run end to end** — every execution gets its id *before* it runs, so the approvals it raises and the dead letters it isolates hang off it. `GET /api/executions/:id/trace` returns, per node: status, attempts (retries included), time, items in → out, whether it was *injected* from a snapshot rather than executed; plus the approvals this run raised (gate type, decision, who, when, resume result → link to the resumed run), which approval this run was the resume of, and the isolated failures. The executions panel renders it, so "why did this go out?" is answered by clicking, not by reading logs.
 
 Bugs the test suite found while being written (the reason it exists):
 

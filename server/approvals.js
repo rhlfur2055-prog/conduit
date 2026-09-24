@@ -57,6 +57,7 @@ export async function requestApproval({ channel = 'telegram', chatId, title, tex
     nodeId, workflowId: meta.workflowId ?? null, workflowName: meta.workflowName ?? null, trigger: meta.trigger ?? null,
     flow: { nodes: flow.nodes, edges: flow.edges }, snapshot: {},
     gate: gate === 'auto' ? 'auto' : 'node',
+    executionId: meta.executionId ?? null,
     remindAt: new Date(now + remind * 60000).toISOString(),
     expireAt: new Date(now + expire * 60000).toISOString(),
     resumeStatus: null,

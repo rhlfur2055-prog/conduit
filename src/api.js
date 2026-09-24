@@ -44,6 +44,8 @@ export const api = {
   lintWorkflow: (wf) => post('/api/workflows/lint', wf).then(ok),
   deleteWorkflow: (id) => authFetch('/api/workflows/' + id, { method: 'DELETE' }).then(ok),
   listExecutions: () => authFetch('/api/executions').then(ok),
+  // 실행 하나의 추적 — { execution, nodes[], approvals[], resumedFrom, children[], deadLetters[] }
+  getTrace: (id) => authFetch(`/api/executions/${encodeURIComponent(id)}/trace`).then(ok),
   listCredentials: () => authFetch('/api/credentials').then(ok),
   saveCredential: (cred) => post('/api/credentials', cred).then(ok),
   deleteCredential: (id) => authFetch('/api/credentials/' + id, { method: 'DELETE' }).then(ok),

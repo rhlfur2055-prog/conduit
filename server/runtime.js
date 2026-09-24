@@ -7,6 +7,7 @@ import { runFlow } from '../src/engine/executor.ts';
 import { Workflows, Executions, DLQ, uid } from './store.js';
 import { finalizeApproval } from './approvals.js';
 import { currentPolicy } from './policy.js';
+import { enqueue, ensureInlineWorker } from './queue.js';
 
 /** 실패한 노드 목록과 Error Trigger 에 넘길 페이로드 */
 export function buildErrorPayload({ workflow, exec, statuses, trigger }) {
@@ -188,12 +189,19 @@ export function registerSchedules(wf) {
     const task = cron.schedule(expr, async () => {
       const fresh = Workflows.get(wf.id);
       if (!fresh || !fresh.active) return;
-      const seed = { [node.id]: { main: { triggeredAt: new Date().toISOString(), interval: p.interval === '직접 지정' ? expr : p.interval } } };
-      await execute(fresh, { seed, trigger: 'schedule' });
-      console.log(`[cron] ${wf.name} 실행 (${expr})`);
+      const { job, deduped } = enqueueScheduled(fresh, node, { expr, interval: p.interval });
+      ensureInlineWorker();
+      console.log(`[cron] ${wf.name} ${deduped ? '이미 큐에 있음' : '큐에 넣음'} (${expr}) → ${job.id}`);
     });
     scheduled.set(`${wf.id}:${node.id}`, task);
   }
+}
+
+/** 스케줄 틱을 큐에 넣는다. 키가 분 단위라 서버 두 대가 같은 분에 같은 크론을 울려도 일은 하나만 생긴다. */
+export function enqueueScheduled(wf, node, { expr, interval, at = new Date() } = {}) {
+  const minute = at.toISOString().slice(0, 16);
+  const seed = { [node.id]: { main: { triggeredAt: at.toISOString(), interval: interval === '직접 지정' ? expr : interval } } };
+  return enqueue({ workflowId: wf.id, workflowName: wf.name, trigger: 'schedule', seed, idempotencyKey: `schedule:${wf.id}:${node.id}:${minute}` });
 }
 
 export function registerAll() {

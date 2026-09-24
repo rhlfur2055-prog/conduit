@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { Workflows, Executions, Credentials, DLQ, Approvals, uid } from '../store.js';
 import { execute, registerSchedules, clearSchedulesFor, buildErrorPayload, dispatchErrorWorkflows, statusRecorder, enrichStatuses, finalizeWaiting } from '../runtime.js';
 import { countItems } from '../../src/engine/items.ts';
+import { Jobs } from '../queue.js';
 import { runFlow } from '../../src/engine/executor.ts';
 import { currentPolicy } from '../policy.js';
 import { NODE_TYPES } from '../../src/engine/nodeTypes.ts';
@@ -101,6 +102,14 @@ workflows.post('/run/stream', async (req, res) => {
     send('done', {});
   }
   res.end();
+});
+
+/* ---------- 작업 큐 ---------- */
+workflows.get('/jobs', (req, res) => res.json({ counts: Jobs.counts(), jobs: Jobs.list({ status: req.query.status, limit: Number(req.query.limit) || 100 }) }));
+workflows.get('/jobs/:id', (req, res) => {
+  const j = Jobs.get(req.params.id);
+  if (!j) return res.status(404).json({ error: 'not found' });
+  res.json(j);
 });
 
 /* ---------- 실행 기록 ---------- */

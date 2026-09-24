@@ -35,6 +35,19 @@ npm run dev     # http://localhost:5173
 
 프로덕션 빌드: `npm run build` → `dist/`
 
+## 워커 따로 띄우기 (선택) — 웹훅·크론 실행을 서버 프로세스 밖에서
+
+웹훅과 크론 틱은 요청 안에서 돌지 않고 SQLite `jobs` 테이블에 들어갑니다. 기본은 서버 프로세스 안의 워커가 잡아 돕니다.
+서버를 가볍게 두고 워커를 따로(여러 개) 두려면:
+
+```bash
+CONDUIT_WORKER=off node server/index.js     # 큐에 넣기만 한다
+node server/worker.js                       # 같은 CONDUIT_DATA_DIR 을 보는 워커 — 몇 개든 띄울 수 있다
+```
+
+같은 일은 한 워커만 잡고, 워커가 죽으면 임대(`CONDUIT_JOB_LEASE_MS`, 기본 30초)가 만료된 뒤 다른 워커가 이어받습니다.
+큐 상태는 `GET /api/jobs`, 일 하나는 `GET /api/jobs/:id`. 웹훅은 기본으로 결과를 기다려 돌려주고, `?async=1` 을 붙이면 `202 { jobId }` 로 바로 답합니다.
+
 ## 모델 고르기 — 키 없이(Ollama) · Claude · 사내 서버
 
 키를 넣지 않아도 됩니다. 서버는 이 순서로 두뇌를 고릅니다.

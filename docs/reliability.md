@@ -63,6 +63,16 @@ Webhook 트리거 노드에서 `signature` 선택 (`none|slack|github|stripe|gen
 - 화면에서는 사이드바 **설정**에 같은 키를 넣으면 됩니다 (이 브라우저에만 저장).
 - 구현: `server/auth.js`, 테스트: `tests/server/auth.test.js` (실제 HTTP 요청으로 401·403·200 확인)
 
+### 작업 큐 (`server/queue.js` · `CONDUIT_WORKER`)
+- 웹훅(`/webhook/*`)과 크론 틱은 `execute()` 를 직접 부르지 않고 `jobs` 테이블에 넣는다. 수동 실행·MCP·DLQ 재실행·승인 재개는 사용자가 결과를 기다리는 호출이라 그대로 직접 돈다.
+- `claimNext(workerId, leaseMs)`: `UPDATE jobs SET status='running', worker_id, attempts+1, lease_until WHERE id = (SELECT … queued OR (running AND lease_until < now) … LIMIT 1) RETURNING *` — 한 문장이라 프로세스가 몇 개든 한 일은 한 워커만 잡는다.
+- 임대: 일을 잡은 워커는 `leaseMs/3` 마다 `heartbeat` 로 임대를 늘린다. 워커가 죽으면 임대가 만료되고 `claimNext` 가 그 일을 다시 준다(`attempts` +1). `max_attempts`(기본 2)에 닿은 채 임대가 만료되면 `reapExpired` 가 failed 로 닫는다. 시도를 다 쓴 실패는 페이로드를 DLQ 에 격리한다.
+- 멱등: `idempotency_key UNIQUE`. 웹훅은 이벤트 키, 스케줄은 `schedule:<wf>:<node>:<분>` — 서버 두 대가 같은 분에 같은 크론을 울려도 일은 하나. 웹훅의 멱등 원장(`processed_events`)은 일이 끝날 때 워커가 done/failed 로 적는다.
+- 웹훅 응답: 기본은 결과를 기다려 `executionId` 를 돌려준다(`CONDUIT_WEBHOOK_WAIT_MS`, 기본 25초). `?async=1` 이면 `202 { jobId }`. 시간을 넘겨도 `202 { jobId }` — `GET /api/jobs/:id` 로 본다.
+- 워커: `CONDUIT_WORKER=inline`(기본) 이면 서버 프로세스 안에서 돈다. `off` 면 큐에 넣기만 하고 `node server/worker.js` 를 따로 띄운다(여러 개 가능, 같은 `CONDUIT_DATA_DIR`).
+- 최소 한 번 실행이다: 워커가 죽었다 이어받으면 앞 워커가 이미 한 부작용은 되돌리지 않는다. 그래서 발송 노드는 승인 게이트 뒤에 있고(승인 없이 두 번 나가지 않는다), 트리거 경계에는 멱등 키가 있다.
+- 테스트: `tests/server/queue.test.js` — 문장 단위(dedupe · claim · 임대 만료 · 심장박동 · 상한) + 진짜 워커 프로세스 두 개(일 30개 정확히 한 번씩 · SIGKILL 뒤 이어받기).
+
 ### 실행 추적 (`GET /api/executions/:id/trace`)
 - 실행 id 는 `execute()` 가 돌기 전에 발급한다(`uid('ex')`). 그래서 실행 중에 생긴 승인 요청(`approvals.execution_id`)과 DLQ 항목(`dlq.execution_id`)이 그 실행에 매달린다.
 - 노드마다 `status · attempts(재시도 포함) · ms · failedItems · injected(스냅샷 주입, 재실행 아님) · kind` 를 실행 기록의 `statuses` 에 남긴다. 워크플로가 지워져도 기록만으로 이름이 복원된다.

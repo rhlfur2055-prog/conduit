@@ -4,6 +4,8 @@ import { Workflows, Executions, Credentials } from '../store.js';
 import { execute, registerSchedules, clearSchedulesFor, buildErrorPayload, dispatchErrorWorkflows } from '../runtime.js';
 import { runFlow } from '../../src/engine/executor.ts';
 import { currentPolicy } from '../policy.js';
+import { NODE_TYPES } from '../../src/engine/nodeTypes.ts';
+import { analyzeGates } from '../../src/engine/gates.ts';
 
 export const workflows = Router();
 
@@ -14,6 +16,17 @@ workflows.get('/workflows', (_req, res) => {
     nodeCount: w.nodes.length, updatedAt: w.updatedAt,
   })));
 });
+// 보호되지 않은 발송 경로 — 저장 전에 화면이 물어볼 수 있게. 실행기가 쓰는 것과 같은 판정(src/engine/gates.ts)
+workflows.post('/workflows/lint', (req, res) => {
+  const { nodes = [], edges = [] } = req.body || {};
+  const title = (id) => NODE_TYPES[nodes.find((n) => n.id === id)?.data?.kind]?.title || id;
+  const unguarded = analyzeGates(nodes, edges).map((u) => ({
+    target: u.target, targetTitle: title(u.target), sources: u.sources, sourceTitles: u.sources.map(title),
+    message: `${u.sources.map(title).join(', ')} → ${title(u.target)}: AI 출력이 승인 없이 밖으로 나갑니다. 실행하면 발송 직전에 자동으로 승인을 묻습니다.`,
+  }));
+  res.json({ aiGate: currentPolicy().aiGate, unguarded });
+});
+
 workflows.get('/workflows/:id', (req, res) => {
   const wf = Workflows.get(req.params.id);
   if (!wf) return res.status(404).json({ error: 'not found' });

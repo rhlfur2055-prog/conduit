@@ -9,7 +9,8 @@ src/
 ├─ engine/
 │  ├─ types.ts       # Item · NodeDefinition · NodeResult 등 엔진의 데이터 모양 (서버 JS 는 JSDoc 으로 가져다 쓴다)
 │  ├─ nodeTypes.ts   # 노드 정의(메타 + 필드 + run) — UI 독립, 프론트/백엔드 공용
-│  ├─ executor.ts    # 위상정렬 실행 + seed 주입 + 입/출력 캡처
+│  ├─ executor.ts    # 위상정렬 실행 + seed 주입 + 입/출력 캡처 + 자동 승인 게이트
+│  ├─ gates.ts       # AI→발송 경로에 승인이 없는지 그래프로 판정 (실행기와 lint API 가 같이 쓴다)
 │  └─ expr.ts        # {{ }} 표현식 해석
 ├─ ui/icons.jsx      # 라인 SVG 아이콘
 ├─ components/       # FlowNode · Sidebar · NodePanel · Inspector(NDV) · LogPanel

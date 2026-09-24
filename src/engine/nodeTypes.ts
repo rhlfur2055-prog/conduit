@@ -51,7 +51,7 @@ const AI_MODELS = ['claude-sonnet-5', 'claude-opus-5', 'claude-haiku-4-5-2025100
 
 // 통합 브리지: 서버가 globalThis.__conduitIntegrations 를 주입하면 실제 API 호출,
 // 브라우저(주입 없음)에서는 "서버 필요" 안내를 낸다.
-async function callIntegration(name: string, args: Record<string, unknown>): Promise<any> {
+export async function callIntegration(name: string, args: Record<string, unknown>): Promise<any> {
   const bridge = globalThis.__conduitIntegrations;
   if (bridge && bridge[name]) return bridge[name](args);
   return { simulated: true, note: `${name} 연동은 서버 실행 + 크리덴셜이 필요합니다. 상단바 "서버 실행" 을 눌러주세요.` };
@@ -135,6 +135,7 @@ export const NODE_TYPES: Record<string, NodeDefinition> = {
   /* ---------------- 동작 ---------------- */
   httpRequest: {
     title: 'HTTP 요청', icon: 'globe', color: '#5f7fa3', category: '동작',
+    sends: (p) => String(p.method || 'GET').toUpperCase() !== 'GET',     // GET 은 읽기, 나머지는 발송
     inputs: ['main'], outputs: ['main'],
     defaults: { method: 'GET', url: 'https://api.github.com/zen', body: '' },
     fields: [
@@ -507,7 +508,7 @@ export const NODE_TYPES: Record<string, NodeDefinition> = {
     },
   },
   screenUnderstand: {
-    title: '화면 이해 (무슨 기능인지)', icon: 'sparkles', color: '#7c5cbf', category: 'AI', backend: true,
+    title: '화면 이해 (무슨 기능인지)', icon: 'sparkles', color: '#7c5cbf', category: 'AI', backend: true, llm: true,
     inputs: ['main'], outputs: ['main'],
     defaults: { image: '{{ $json.image }}', lang: 'kor+eng', hint: '', withOcr: 'true' },
     fields: [
@@ -526,7 +527,7 @@ export const NODE_TYPES: Record<string, NodeDefinition> = {
     },
   },
   socraticRead: {
-    title: '소크라테스식 읽기 (검증된 이해)', icon: 'sparkles', color: '#7c5cbf', category: 'AI', backend: true,
+    title: '소크라테스식 읽기 (검증된 이해)', icon: 'sparkles', color: '#7c5cbf', category: 'AI', backend: true, llm: true,
     inputs: ['main'], outputs: ['main'],
     defaults: { image: '{{ $json.image }}', text: '', focus: '', title: '', engine: 'auto', lang: 'kor+eng', rounds: '2', learn: 'true', memory: 'true', model: 'claude-sonnet-5' },
     fields: [
@@ -616,7 +617,7 @@ export const NODE_TYPES: Record<string, NodeDefinition> = {
 
   /* ---------------- 연동 (실제 API · 서버 실행 + 크리덴셜 필요) ---------------- */
   slack: {
-    title: 'Slack 메시지', icon: 'output', color: '#611f69', category: '연동', backend: true,
+    title: 'Slack 메시지', icon: 'output', color: '#611f69', category: '연동', backend: true, sends: true,
     inputs: ['main'], outputs: ['main'],
     defaults: { credential: '', channel: '#general', text: '{{ $json.name }} 이벤트 발생' },
     fields: [
@@ -631,7 +632,7 @@ export const NODE_TYPES: Record<string, NodeDefinition> = {
     },
   },
   telegram: {
-    title: '텔레그램 메시지', icon: 'output', color: '#2aabee', category: '연동', backend: true,
+    title: '텔레그램 메시지', icon: 'output', color: '#2aabee', category: '연동', backend: true, sends: true,
     inputs: ['main'], outputs: ['main'],
     defaults: { chatId: '', text: '{{ $json.name }} 이벤트 발생' },
     fields: [
@@ -646,7 +647,7 @@ export const NODE_TYPES: Record<string, NodeDefinition> = {
     },
   },
   gmail: {
-    title: 'Gmail 보내기', icon: 'output', color: '#c5221f', category: '연동', backend: true,
+    title: 'Gmail 보내기', icon: 'output', color: '#c5221f', category: '연동', backend: true, sends: true,
     inputs: ['main'], outputs: ['main'],
     defaults: { credential: '', to: 'user@example.com', subject: '알림: {{ $json.name }}', text: '본문을 입력하세요' },
     fields: [
@@ -662,7 +663,7 @@ export const NODE_TYPES: Record<string, NodeDefinition> = {
     },
   },
   notion: {
-    title: 'Notion 페이지 생성', icon: 'edit', color: '#111111', category: '연동', backend: true,
+    title: 'Notion 페이지 생성', icon: 'edit', color: '#111111', category: '연동', backend: true, sends: true,
     inputs: ['main'], outputs: ['main'],
     defaults: { credential: '', databaseId: '', titleProp: 'Name', title: '{{ $json.name }}', content: '' },
     fields: [
@@ -733,6 +734,7 @@ export const NODE_TYPES: Record<string, NodeDefinition> = {
   },
   mcpTool: {
     title: 'MCP 도구 호출', icon: 'bolt', color: '#7c5cbf', category: '연동', backend: true,
+    sends: (p) => !!p.tool,                                                 // 도구 이름이 없으면 목록 조회 = 읽기
     inputs: ['main'], outputs: ['main'],
     defaults: { credential: '', tool: '', args: '{\n}' },
     fields: [
@@ -748,6 +750,7 @@ export const NODE_TYPES: Record<string, NodeDefinition> = {
   },
   httpAuth: {
     title: 'HTTP 요청 (인증)', icon: 'key', color: '#5f7fa3', category: '연동', backend: true,
+    sends: (p) => String(p.method || 'GET').toUpperCase() !== 'GET',
     inputs: ['main'], outputs: ['main'],
     defaults: {
       credential: '', authType: 'bearer', method: 'GET',
@@ -773,7 +776,7 @@ export const NODE_TYPES: Record<string, NodeDefinition> = {
 
   /* ---------------- AI (n8n이 불편한 것들 · 서버 실행 권장) ---------------- */
   ai: {
-    title: 'AI · Claude', icon: 'spark', color: '#cc785c', category: 'AI', backend: true,
+    title: 'AI · Claude', icon: 'spark', color: '#cc785c', category: 'AI', backend: true, llm: true,
     inputs: ['main'], outputs: ['main'],
     defaults: {
       model: 'claude-sonnet-5',
@@ -792,7 +795,7 @@ export const NODE_TYPES: Record<string, NodeDefinition> = {
     },
   },
   aiExtract: {
-    title: 'AI 구조화 추출', icon: 'spark', color: '#cc785c', category: 'AI', backend: true,
+    title: 'AI 구조화 추출', icon: 'spark', color: '#cc785c', category: 'AI', backend: true, llm: true,
     inputs: ['main'], outputs: ['main'],
     defaults: { model: 'claude-sonnet-5', instruction: '이름과 금액을 추출해 JSON으로', target: 'extracted' },
     fields: [
@@ -813,7 +816,7 @@ export const NODE_TYPES: Record<string, NodeDefinition> = {
     },
   },
   aiAgent: {
-    title: 'AI 에이전트 (도구 사용)', icon: 'bolt', color: '#cc785c', category: 'AI', backend: true,
+    title: 'AI 에이전트 (도구 사용)', icon: 'bolt', color: '#cc785c', category: 'AI', backend: true, llm: true,
     inputs: ['main'], outputs: ['main'],
     defaults: {
       model: 'claude-sonnet-5',
@@ -857,7 +860,7 @@ export const NODE_TYPES: Record<string, NodeDefinition> = {
     },
   },
   loopRefine: {
-    title: '루프 엔지니어링', icon: 'flow', color: '#cc785c', category: 'AI', backend: true,
+    title: '루프 엔지니어링', icon: 'flow', color: '#cc785c', category: 'AI', backend: true, llm: true,
     inputs: ['main'], outputs: ['main'],
     defaults: {
       model: 'claude-sonnet-5',

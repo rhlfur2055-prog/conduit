@@ -53,7 +53,7 @@ export async function dispatchErrorWorkflows(failed) {
 }
 
 /* ---------- 실행 ---------- */
-export async function execute(workflow, { seed = {}, trigger = 'manual' } = {}) {
+export async function execute(workflow, { seed = {}, trigger = 'manual', gates = {} } = {}) {
   const nodes = (workflow.nodes || []).map((n) => ({
     id: n.id,
     data: { kind: n.data.kind, params: n.data.params },
@@ -67,6 +67,7 @@ export async function execute(workflow, { seed = {}, trigger = 'manual' } = {}) 
   /** @type {Map<string, import('../src/engine/types.ts').NodeResult>} — 승인 대기 스냅샷의 재료 */
   const results = await runFlow(nodes, edges, {
     seed,
+    gates,                                   // 자동 게이트의 승인/거절 (승인 재개에서만 채워진다)
     policy: currentPolicy(),
     meta: { workflowId: workflow.id || null, workflowName: workflow.name || '(임시)', trigger },
     onLog: (l) => logs.push(l),

@@ -315,3 +315,77 @@ describe('API', () => {
     expect(rebind).toBe(403);                                  // Host 가 로컬이 아니면 거부
   });
 });
+
+describe('자동 승인 게이트 — 승인 노드 없이 AI → 텔레그램', () => {
+  // 서버 브리지 위에 텔레그램 발송과 LLM 만 가짜로 바꾼다 (승인 저장·재개는 진짜 경로)
+  const sent = [];
+  let prevTg, prevLLM;
+  beforeAll(() => {
+    prevTg = globalThis.__conduitIntegrations.telegram; prevLLM = globalThis.__conduitLLM;
+    globalThis.__conduitIntegrations.telegram = async (a) => { sent.push(a); return { ok: true, messageId: 1 }; };
+    globalThis.__conduitLLM = async ({ prompt }) => ({ text: `안녕하세요, ${prompt} 에 답드립니다.`, model: 'fake' });
+  });
+  afterAll(() => { globalThis.__conduitIntegrations.telegram = prevTg; globalThis.__conduitLLM = prevLLM; });
+  beforeEach(() => { sent.length = 0; });
+
+  const autoFlow = () => ({
+    id: 'wf_auto', name: 'AI 답장 자동 발송',
+    nodes: [
+      n('t', 'manualTrigger', { json: JSON.stringify({ name: '김민수', q: '배송 언제 오나요' }) }),
+      n('ai', 'ai', { model: 'claude-sonnet-5', system: '', prompt: '{{ $json.q }}' }),
+      n('send', 'telegram', { chatId: '123', text: '{{ $json.aiText }}' }),
+    ],
+    edges: [e('t', 'ai'), e('ai', 'send')],
+  });
+
+  it('발송 직전에 멈추고 사람에게 AI 본문을 보여준다 — 승인 기록은 gate:auto', async () => {
+    const r = await execute(autoFlow(), { trigger: 'manual' });
+    expect(r.statuses.ai.status).toBe('done');
+    expect(r.statuses.send.status).toBe('waiting');
+    expect(r.execution.status).toBe('waiting');
+    expect(sent).toHaveLength(0);
+    const [rec] = Approvals.pending();
+    expect(rec).toMatchObject({ gate: 'auto', nodeId: 'send', chatId: '123', title: '자동 승인: 텔레그램 메시지' });
+    expect(rec.text).toContain('배송 언제 오나요 에 답드립니다');
+    expect(Object.keys(rec.snapshot).sort()).toEqual(['ai', 't']);
+    expect(fake.sent[0]).toMatchObject({ approvalId: rec.id, title: '자동 승인: 텔레그램 메시지' });
+  });
+
+  it('승인하면 발송 노드만 실행되고 AI 는 다시 호출되지 않는다', async () => {
+    await execute(autoFlow(), { trigger: 'manual' });
+    const [rec] = Approvals.pending();
+    let llmCalls = 0;
+    const llm = globalThis.__conduitLLM;
+    globalThis.__conduitLLM = async (a) => { llmCalls++; return llm(a); };
+    const d = await decide(rec.id, { decision: 'approve', by: '@tester' });
+    globalThis.__conduitLLM = llm;
+    expect(d).toMatchObject({ ok: true, status: 'approved', resumeStatus: 'done' });
+    expect(llmCalls).toBe(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].text).toContain('배송 언제 오나요 에 답드립니다');
+    const resumed = lastExec(d.executionId);
+    expect(resumed.statuses.ai.status).toBe('done');
+    expect(resumed.statuses.send.status).toBe('done');
+    expect(resumed.statuses.send.output.main[0].approval).toMatchObject({ id: rec.id, decision: 'approve', by: '@tester' });
+    expect(Approvals.get(rec.id)).toMatchObject({ status: 'approved', resumeStatus: 'done' });
+  });
+
+  it('거절하면 보내지 않고 끝난다', async () => {
+    await execute(autoFlow(), { trigger: 'manual' });
+    const [rec] = Approvals.pending();
+    const d = await decide(rec.id, { decision: 'reject', by: '@tester' });
+    expect(d).toMatchObject({ ok: true, status: 'rejected', resumeStatus: 'done' });
+    expect(sent).toHaveLength(0);
+    expect(lastExec(d.executionId).statuses.send.status).toBe('skip');
+  });
+
+  it('저장 전 경고(lint): 보호되지 않은 경로를 이름으로 짚는다', async () => {
+    const f = autoFlow();
+    const r = await fetch(`${base}/api/workflows/lint`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nodes: f.nodes, edges: f.edges }) });
+    const body = await r.json();
+    expect(body.aiGate).toBe('auto');
+    expect(body.unguarded).toHaveLength(1);
+    expect(body.unguarded[0]).toMatchObject({ target: 'send', targetTitle: '텔레그램 메시지', sourceTitles: ['AI · Claude'] });
+    expect(body.unguarded[0].message).toContain('승인 없이 밖으로');
+  });
+});

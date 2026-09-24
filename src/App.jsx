@@ -361,6 +361,13 @@ function Editor() {
     setCurrentId(saved.id);
     setWfName(saved.name);
     refreshWorkflows();
+    // AI 출력이 승인 없이 밖으로 나가는 경로가 있으면 알려 준다 — 실행하면 발송 직전에 자동으로 승인을 묻는다
+    try {
+      const lint = await api.lintWorkflow({ nodes: clean, edges });
+      if (lint?.unguarded?.length) {
+        setLog((prev) => [...prev, ...lint.unguarded.map((u) => ({ kind: 'skip', msg: `⏸ ${u.message}` }))]);
+      }
+    } catch { /* 경고는 저장을 막지 않는다 */ }
     return saved;
   }, [nodes, edges, currentId, wfName, refreshWorkflows]);
 

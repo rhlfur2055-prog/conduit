@@ -40,6 +40,8 @@ export const api = {
   listWorkflows: () => authFetch('/api/workflows').then(ok),
   getWorkflow: (id) => authFetch('/api/workflows/' + id).then(ok),
   saveWorkflow: (wf) => post('/api/workflows', wf).then(ok),
+  // 보호되지 않은 AI→발송 경로 (저장 전 경고) — { aiGate, unguarded: [{ target, targetTitle, sourceTitles, message }] }
+  lintWorkflow: (wf) => post('/api/workflows/lint', wf).then(ok),
   deleteWorkflow: (id) => authFetch('/api/workflows/' + id, { method: 'DELETE' }).then(ok),
   listExecutions: () => authFetch('/api/executions').then(ok),
   listCredentials: () => authFetch('/api/credentials').then(ok),

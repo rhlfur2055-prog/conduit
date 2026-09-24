@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS approvals (
   resume_error         TEXT,
   resume_started_at    TEXT,
   resume_ended_at      TEXT,
-  resumed_execution_id TEXT
+  resumed_execution_id TEXT,
+  execution_id         TEXT             -- 이 승인을 만든 실행 (추적용)
 );
 CREATE INDEX IF NOT EXISTS approvals_status ON approvals (status, created_at DESC);
 
@@ -72,7 +73,8 @@ CREATE TABLE IF NOT EXISTS dlq (
   error_msg     TEXT NOT NULL,
   attempts      INTEGER NOT NULL DEFAULT 1,
   failed_at     TEXT NOT NULL,
-  replay_status TEXT NOT NULL CHECK (replay_status IN ('pending','replayed','dropped'))
+  replay_status TEXT NOT NULL CHECK (replay_status IN ('pending','replayed','dropped')),
+  execution_id  TEXT                    -- 실패가 난 실행 (추적용)
 );
 CREATE INDEX IF NOT EXISTS dlq_failed_at ON dlq (failed_at DESC);
 
@@ -83,8 +85,9 @@ CREATE TABLE IF NOT EXISTS executions (
   trigger       TEXT,
   status        TEXT NOT NULL,
   at            TEXT NOT NULL,
+  duration_ms   INTEGER,
   logs          TEXT,               -- JSON
-  statuses      TEXT                -- JSON
+  statuses      TEXT                -- JSON (노드별 status · attempts · ms · injected · error)
 );
 CREATE INDEX IF NOT EXISTS executions_wf ON executions (workflow_id, at DESC);
 `;
@@ -104,8 +107,12 @@ export function openDb(dataDir) {
 
 /** 스키마 변경 — 있는 DB 에 열을 더한다. CREATE TABLE IF NOT EXISTS 는 기존 테이블을 건드리지 않으므로 여기서 맞춘다. */
 function migrateSchema(db) {
-  const cols = new Set(db.prepare('PRAGMA table_info(approvals)').all().map((c) => c.name));
-  if (!cols.has('gate')) db.exec("ALTER TABLE approvals ADD COLUMN gate TEXT NOT NULL DEFAULT 'node' CHECK (gate IN ('node','auto'))");
+  const colsOf = (t) => new Set(db.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name));
+  const add = (t, col, ddl) => { if (!colsOf(t).has(col)) db.exec(`ALTER TABLE ${t} ADD COLUMN ${ddl}`); };
+  add('approvals', 'gate', "gate TEXT NOT NULL DEFAULT 'node' CHECK (gate IN ('node','auto'))");
+  add('approvals', 'execution_id', 'execution_id TEXT');
+  add('dlq', 'execution_id', 'execution_id TEXT');
+  add('executions', 'duration_ms', 'duration_ms INTEGER');
 }
 
 /** BEGIN IMMEDIATE … COMMIT. 안에서 던지면 ROLLBACK 하고 다시 던진다. */

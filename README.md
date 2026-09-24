@@ -17,6 +17,7 @@ from the web UI or Telegram, in the spirit of openclaw — with one design rule 
 | | |
 |---|---|
 | **What** | Node-based workflow automation + a verified personal assistant (personal project, Aug 2026 –) |
+| **History** | Git history starts 2026-09-19: the repo was re-initialised before going public so no secrets remain in history. Earlier work is in [docs/devlog.md](docs/devlog.md). |
 | **Stack** | Vite · React · React Flow / Express · Node.js · transformers.js / PaddleOCR (Python, optional) |
 | **Size** | **54 node types** · ~13,000 lines (frontend + server) |
 | **Tests** | **414 Vitest tests** + a **33-step local end-to-end check** that drives a real server process over HTTP |

@@ -18,12 +18,12 @@ from the web UI or Telegram, in the spirit of openclaw — with one design rule 
 |---|---|
 | **What** | Node-based workflow automation + a verified personal assistant (personal project, Aug 2026 –) |
 | **Stack** | Vite · React · React Flow / Express · Node.js · transformers.js / PaddleOCR (Python, optional) |
-| **Size** | **64 node types** · ~14,000 lines (frontend + server) |
-| **Tests** | **432 Vitest tests** + a **33-step local end-to-end check** that drives a real server process over HTTP |
+| **Size** | **54 node types** · ~13,000 lines (frontend + server) |
+| **Tests** | **414 Vitest tests** + a **33-step local end-to-end check** that drives a real server process over HTTP |
 | **Language** | The assistant and the Easy-start screen speak Korean and English. Most docs are in Korean; this page summarizes them. |
 
 ```bash
-npm install && npm test        # 432 tests
+npm install && npm test        # 414 tests
 node server/index.js           # server + built UI → http://localhost:8787 (opens the "Easy start" guide)
 npm run dev                    # canvas dev server → http://localhost:5173
 node server/local.e2e.js       # end-to-end: real server, fake Telegram/Anthropic, 33 checks

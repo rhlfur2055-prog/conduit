@@ -19,7 +19,7 @@ import { execute as runtimeExecute } from './runtime.js';
 
 // 밖으로 무언가를 내보내거나 코드를 실행하는 노드 — 이런 워크플로는 자동 실행하지 않고 사람 승인을 받는다
 export const SIDE_EFFECT_KINDS = new Set([
-  'youtubeUpload', 'slack', 'gmail', 'telegram', 'notion', 'bloggerPublish', 'verifiedComment',
+  'youtubeUpload', 'slack', 'gmail', 'telegram', 'notion', 'verifiedComment',
   'httpRequest', 'httpAuth', 'mcpTool', 'code', 'aiAgent',
 ]);
 export const HEARTBEAT_LIMITS = Object.freeze({

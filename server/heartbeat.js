@@ -203,7 +203,7 @@ export async function runHeartbeat({ now = Date.now(), limits = HEARTBEAT_LIMITS
   const r = await llm({ system: HEARTBEAT_SYSTEM, prompt: contextBlock(ctx), maxTokens: 2048 });
   if (r.simulated || r.error) {
     mode = 'rule';
-    note = r.simulated ? 'LLM 키가 없어 규칙 모드' : `LLM 오류 → 규칙 모드 (${String(r.text).slice(0, 120)})`;
+    note = r.simulated ? '연결된 모델이 없어 규칙 모드' : `LLM 오류 → 규칙 모드 (${String(r.text).slice(0, 120)})`;
     proposals = ruleProposals(ctx);
   } else {
     usage = r.usage;

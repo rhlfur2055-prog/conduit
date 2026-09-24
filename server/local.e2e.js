@@ -122,6 +122,7 @@ const env = {
   ...process.env, PORT: String(PORT), CONDUIT_DATA_DIR: DATA,
   TELEGRAM_API_BASE: `http://127.0.0.1:${tgPort}`, ANTHROPIC_BASE_URL: `http://127.0.0.1:${clPort}`,
   TELEGRAM_BOT_TOKEN: '', TELEGRAM_CHAT_ID: '', ANTHROPIC_API_KEY: '', CONDUIT_API_KEY: '', CONDUIT_HEARTBEAT: '',
+  CONDUIT_LLM_BASE_URL: '', CONDUIT_LLM_MODEL: '', CONDUIT_LLM_AUTODETECT: 'off',
 };
 const child = spawn(process.execPath, [path.join(ROOT, 'server', 'index.js')], { env, cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
 let serverLog = '';

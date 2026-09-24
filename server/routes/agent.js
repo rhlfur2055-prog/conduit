@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import { Goals, Heartbeats, PendingActions, Settings, People } from '../store.js';
 import { runHeartbeat, decidePending } from '../heartbeat.js';
-import { quickstart, status, activity, saveClaudeKey, saveTelegramToken, applyHeartbeatSetting } from '../quickstart.js';
+import { quickstart, status, activity, saveClaudeKey, saveTelegramToken, applyHeartbeatSetting, setLlm } from '../quickstart.js';
 import { setMode, allowChat, removeChat, startTelegram } from '../telegramChannel.js';
 import { listTemplates, createFromTemplate } from '../templates.js';
 import { handleAssistant, confirmAssistant, parseTime } from '../assistant.js';
@@ -43,6 +43,10 @@ agent.post('/agent/quickstart', (_req, res) => res.json(quickstart()));
 
 agent.post('/agent/claude-key', async (req, res) => {
   const r = await saveClaudeKey(req.body?.apiKey);
+  res.status(r.ok ? 200 : 400).json(r);
+});
+agent.put('/agent/llm', async (req, res) => {
+  const r = await setLlm(req.body || {});
   res.status(r.ok ? 200 : 400).json(r);
 });
 agent.post('/agent/telegram-token', async (req, res) => {

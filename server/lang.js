@@ -43,7 +43,7 @@ const M = {
     // 결과 답장
     readHead: '📖 읽은 내용', readNoSentence: '• 근거가 확인된 문장이 없어요', notInDoc: '❓ 문서에 없던 것: {list}',
     readStats: '검증 {v}/{q} · 근거율 {g}', linkedMem: ' · 전에 읽은 것 {n}건과 연결',
-    skipped: '읽기를 건너뛰었어요: {note}', noKey: 'Claude 키가 없어요', handled: '처리했어요 ({status})',
+    skipped: '읽기를 건너뛰었어요: {note}', noKey: '연결된 모델이 없어요', handled: '처리했어요 ({status})',
     waitApproval: '⏸ 다음 단계는 승인을 기다려요.', hadError: '⚠️ 처리 중 오류가 있었어요. PC 의 실행 기록을 확인해 주세요.',
     failNotice: '⚠️ 자동화 실패: {name}\n{err}\nPC 의 실행 기록에서 자세히 볼 수 있어요.', doneNotice: '✅ {name} 완료',
     // 처음 연결 — 내 정보
@@ -89,7 +89,7 @@ const M = {
     statusBeat: 'Last auto-check: {beat}', none: '(none)',
     readHead: '📖 What I read', readNoSentence: '• No sentence could be verified', notInDoc: '❓ Not in the document: {list}',
     readStats: 'verified {v}/{q} · grounded {g}', linkedMem: ' · linked to {n} earlier item(s)',
-    skipped: 'Skipped reading: {note}', noKey: 'no Claude key', handled: 'Done ({status})',
+    skipped: 'Skipped reading: {note}', noKey: 'no model connected', handled: 'Done ({status})',
     waitApproval: '⏸ The next step is waiting for approval.', hadError: '⚠️ Something went wrong. Check the run history on the PC.',
     failNotice: '⚠️ Automation failed: {name}\n{err}\nSee the run history on the PC for details.', doneNotice: '✅ {name} finished',
     obLang: '어떤 언어로 도와드릴까요?\nWhich language should I use?',

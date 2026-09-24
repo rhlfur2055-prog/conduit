@@ -25,7 +25,11 @@ const U = {
     chatNote: '텔레그램에서 봇에게 같은 말을 보내도 돼요. 새 자동화는 [만들기] 를 눌러야 켜져요.',
     now: '방금', minAgo: '분 전', hourAgo: '시간 전', done: '완료', todo: '할 일', loading: '불러오는 중…',
     s1: '준비하기', s1p: '버튼을 누르면 읽기에 필요한 것들(받은편지함 폴더 · 읽는 순서 · 목표)을 알아서 만들어요.', s1btn: '시작 준비', s1busy: '준비 중…', s1inbox: '받은편지함 폴더:', s1inbox2: '— 여기에 사진을 넣어도 읽어요.',
-    s2: 'Claude 연결 — 글을 이해하는 두뇌', s2ok: '연결됐어요. 다른 키로 바꾸려면 아래에 새 키를 넣으세요.',
+    s2: '두뇌 고르기 — 내 PC 모델(키 불필요) 또는 Claude', s2ok: 'Claude 키가 들어 있어요. 다른 키로 바꾸려면 아래에 새 키를 넣으세요.',
+    s2now: '지금 쓰는 두뇌:', s2none: '없음 (글자는 읽지만 이해·요약은 건너뛰어요)', s2local: '내 PC 모델', s2localSub: '키 없음 · 내 컴퓨터 밖으로 아무것도 안 나가요',
+    s2localOn: '✅ Ollama 켜짐 ·', s2localOff: 'Ollama 가 꺼져 있거나 설치되지 않았어요', s2noModel: '모델 없음 — ollama pull gemma3:4b',
+    s2claudeSub: '더 똑똑하고 도구 호출(에이전트)까지 · 키 필요', s2ok2: '✅ 키 있음', s2needKey: '아래에서 키를 넣으면 고를 수 있어요',
+    s2install: '키 없이 쓰려면', s2install2: '에서 설치한 뒤 터미널에서', s2keyTitle: 'Claude 키 넣기 (선택)',
     s2p1: '→ API Keys → Create Key 로 받은', s2p2: '키를 붙여 넣으세요. 키가 없으면 글자는 읽지만 이해·요약은 건너뛰어요.',
     connect: '연결', checking: '확인 중…', connected: '✅ 연결됐어요',
     s3: '휴대폰 연결 — 텔레그램', s3a: '휴대폰 텔레그램에서 @BotFather 를 찾아 /newbot 을 보내고 봇 이름을 정하세요.', s3b: 'BotFather 가 준 토큰(예: 123456789:AA…)을 아래에 붙여 넣으세요.',
@@ -60,7 +64,11 @@ const U = {
     chatNote: 'You can say the same thing to the bot on Telegram. New automations only turn on after you press [Create].',
     now: 'just now', minAgo: ' min ago', hourAgo: ' h ago', done: 'Done', todo: 'To do', loading: 'Loading…',
     s1: 'Get ready', s1p: 'One click creates what reading needs (an inbox folder, the reading flow, a goal).', s1btn: 'Get started', s1busy: 'Preparing…', s1inbox: 'Inbox folder:', s1inbox2: '— photos dropped here are read too.',
-    s2: 'Connect Claude — the brain that understands text', s2ok: 'Connected. Paste a new key below to replace it.',
+    s2: 'Pick a brain — a model on your PC (no key) or Claude', s2ok: 'A Claude key is stored. Paste a new key below to replace it.',
+    s2now: 'Current brain:', s2none: 'none (letters are read, understanding and summaries are skipped)', s2local: 'Model on my PC', s2localSub: 'No key · nothing leaves your computer',
+    s2localOn: '✅ Ollama running ·', s2localOff: 'Ollama is off or not installed', s2noModel: 'no model — ollama pull gemma3:4b',
+    s2claudeSub: 'Smarter, and tool calling (agent) · needs a key', s2ok2: '✅ key stored', s2needKey: 'Paste a key below to enable',
+    s2install: 'To go key-free, install from', s2install2: 'then run', s2keyTitle: 'Add a Claude key (optional)',
     s2p1: '→ API Keys → Create Key, then paste the', s2p2: 'key. Without a key it still reads the letters but skips understanding and summaries.',
     connect: 'Connect', checking: 'Checking…', connected: '✅ Connected',
     s3: 'Connect your phone — Telegram', s3a: 'In Telegram, find @BotFather, send /newbot and name your bot.', s3b: 'Paste the token BotFather gives you (e.g. 123456789:AA…) below.',
@@ -313,6 +321,7 @@ export default function EasyStart({ open, onClose }) {
 
   const ready = st?.quickstart?.ready;
   const tg = st?.telegram;
+  const llm = st?.llm || { provider: 'none', model: null, claude: { connected: false }, local: { reachable: false, models: [] } };
 
   return (
     <div className="modal-scrim" onClick={onClose}>
@@ -352,23 +361,37 @@ export default function EasyStart({ open, onClose }) {
                 {ready && <p className="easy-sub">{u.s1inbox} <code>{st.quickstart.inbox}</code> {u.s1inbox2}</p>}
               </Step>
 
-              <Step n={2} done={st.claude.connected} title={u.s2} u={u}>
-                {st.claude.connected ? (
-                  <p>{u.s2ok}</p>
-                ) : (
+              <Step n={2} done={llm.provider !== 'none'} title={u.s2} u={u}>
+                <p className="easy-sub">{u.s2now} <b>{llm.provider === 'local' ? `${u.s2local} (${llm.model || '?'})` : llm.provider === 'anthropic' ? `Claude (${llm.model})` : u.s2none}</b></p>
+                <div className="easy-modes">
+                  <button className={`easy-mode ${llm.provider === 'local' ? 'on' : ''}`} disabled={busy === 'lm'} onClick={() => run('lm', () => api.agentLlmSet({ provider: 'local' }), () => u.connected)}>
+                    <b>{u.s2local}</b><br /><small>{u.s2localSub}</small><br />
+                    {llm.local.reachable ? <small className="easy-ok">{u.s2localOn} {llm.local.models.length ? llm.local.models.slice(0, 3).join(', ') : u.s2noModel}</small> : <small>{u.s2localOff}</small>}
+                  </button>
+                  <button className={`easy-mode ${llm.provider === 'anthropic' ? 'on' : ''}`} disabled={busy === 'lm' || !llm.claude.connected} onClick={() => run('lm', () => api.agentLlmSet({ provider: 'anthropic' }), () => u.connected)}>
+                    <b>Claude</b><br /><small>{u.s2claudeSub}</small><br />
+                    <small>{llm.claude.connected ? u.s2ok2 : u.s2needKey}</small>
+                  </button>
+                </div>
+                {msg.lm && <p className="easy-msg">{msg.lm}</p>}
+                {!llm.local.reachable && (
+                  <p className="easy-sub">{u.s2install} <a href="https://ollama.com/download" target="_blank" rel="noreferrer">ollama.com</a> {u.s2install2} <code>ollama pull gemma3:4b</code></p>
+                )}
+                <details className="easy-details">
+                  <summary>{llm.claude.connected ? u.s2ok : u.s2keyTitle}</summary>
                   <p>
                     <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">console.anthropic.com</a> {u.s2p1}
                     {' '}<code>sk-ant-…</code> {u.s2p2}
                   </p>
-                )}
-                <div className="easy-row">
-                  <input className="easy-input" type="password" placeholder="sk-ant-…" value={claudeKey} onChange={(e) => setClaudeKey(e.target.value)} />
-                  <button className="easy-btn" disabled={!claudeKey || busy === 'ck'} onClick={async () => {
-                    const r = await run('ck', () => api.agentClaudeKey(claudeKey), (x) => `${u.connected} (${x.masked})`);
-                    if (r) setClaudeKey('');
-                  }}>{busy === 'ck' ? u.checking : u.connect}</button>
-                </div>
-                {msg.ck && <p className="easy-msg">{msg.ck}</p>}
+                  <div className="easy-row">
+                    <input className="easy-input" type="password" placeholder="sk-ant-…" value={claudeKey} onChange={(e) => setClaudeKey(e.target.value)} />
+                    <button className="easy-btn" disabled={!claudeKey || busy === 'ck'} onClick={async () => {
+                      const r = await run('ck', () => api.agentClaudeKey(claudeKey), (x) => `${u.connected} (${x.masked})`);
+                      if (r) setClaudeKey('');
+                    }}>{busy === 'ck' ? u.checking : u.connect}</button>
+                  </div>
+                  {msg.ck && <p className="easy-msg">{msg.ck}</p>}
+                </details>
               </Step>
 
               <Step n={3} done={tg.connected && tg.chats.length > 0} title={u.s3} u={u}>

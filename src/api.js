@@ -56,6 +56,7 @@ export const api = {
   agentActivity: () => authFetch('/api/agent/activity').then(ok),
   agentQuickstart: () => post('/api/agent/quickstart', {}).then(ok),
   agentClaudeKey: (apiKey) => post('/api/agent/claude-key', { apiKey }).then(ok),
+  agentLlmSet: (patch) => put('/api/agent/llm', patch).then(ok),
   agentTelegramToken: (botToken) => post('/api/agent/telegram-token', { botToken }).then(ok),
   agentTelegramAllow: (chatId, asOwner) => post('/api/agent/telegram/allow', { chatId, ...(asOwner ? { asOwner: true } : {}) }).then(ok),
   agentTelegramRemove: (chatId) => post('/api/agent/telegram/remove', { chatId }).then(ok),

@@ -21,16 +21,20 @@ The answer runs through the whole codebase:
 | **What** | Workflow engine with a human-approval gate, a verification layer for LLM output, and MCP in both directions (personal project, Aug 2026 –) |
 | **Stack** | Node.js · Express / React · React Flow · Vite / Docker · GitHub Actions |
 | **Size** | ~11,000 lines (engine + server + UI) · 45 node types |
-| **Tests** | **410 Vitest tests** + a **33-step end-to-end check** that drives a real server process over HTTP |
+| **Tests** | **428 Vitest tests** + a **33-step end-to-end check** that drives a real server process over HTTP |
+| **Brain** | **No API key required.** If [Ollama](https://ollama.com) is running, Conduit uses the model on your PC and nothing leaves your machine. Add a Claude key only if you want it. |
 | **History** | Git history starts 2026-09-19: the repo was re-initialised before going public so no secrets remain. Earlier work is in [docs/devlog.md](docs/devlog.md). |
 
+**Try it without installing:** [rhlfur2055-prog.github.io/conduit](https://rhlfur2055-prog.github.io/conduit/) — the canvas runs the engine in your browser; integration nodes simulate.
+
 ```bash
-npm install && npm test        # 410 tests, no keys needed
+npm install && npm test        # 428 tests, no keys needed
 node server/index.js           # server + built UI → http://localhost:8787
 node server/local.e2e.js       # end-to-end: real server, fake Telegram/Anthropic, 33 checks
 ```
 
 Runs end to end without any API key: integration nodes return `{ simulated: true }`, so a fresh clone works on the first try.
+For real answers without a key: install Ollama, run `ollama pull gemma3:4b`, start Conduit. It finds the model by itself.
 
 ---
 
@@ -139,6 +143,25 @@ The layers above were built for a concrete user: an assistant you talk to from t
 Screen reading uses two layers: `ocr` (tesseract.js, offline, no key) and `screenUnderstand` (Claude vision, key optional — without it the OCR result still flows).
 
 ---
+
+## 5. Bring your own brain — no key required
+
+Most people hesitate to paste an API key into a hobby tool. So the key is optional.
+
+| Order | Provider | When |
+|---|---|---|
+| 1 | Claude (Anthropic) | a key is set in `.env` or in the UI |
+| 2 | Any OpenAI-compatible server | `CONDUIT_LLM_BASE_URL` is set (LM Studio, llama.cpp, vLLM, a company gateway) |
+| 3 | Ollama on this PC | nothing is configured but `localhost:11434` answers — **automatic** |
+| 4 | Simulation | none of the above; nodes still run and say so |
+
+- One switch in the Easy-start screen: **Model on my PC** (no key, nothing leaves your computer) or **Claude**.
+- Ollama is called through its native API so reasoning models keep their "thinking" out of the answer; images go through as well (screen understanding, Socratic reading).
+- **The verification layer does not care which model answered.** Quote checks, value grounding and injection quarantine are code, so a weaker local model gets caught the same way. That is the point of this repo.
+- Honest limit: the agent node (tool calling) is still Claude-only. In local mode it says so instead of pretending.
+- Measured on this machine (RTX 5070 laptop, `gemma3:4b`, 2026-09-24): an AI node answers a one-line Korean question in about 8 s on the first call (model load) and under 1 s after that. A reasoning model such as `qwen3:4b` spent its whole 1,024-token budget thinking and returned an empty answer after 48 s, so Conduit prefers non-reasoning models when it auto-selects. A 4B model is not Claude: it still gets facts wrong, which is exactly what the verification layer is there to catch.
+
+`docker compose --profile local up -d` starts Conduit **and** Ollama together and pulls the model on first boot.
 
 ## Optional pieces
 

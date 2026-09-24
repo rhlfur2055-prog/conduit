@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import cron from 'node-cron';
 import { Settings, Workflows, Goals, Credentials, Heartbeats, PendingActions, Approvals, Executions, DATA_DIR } from './store.js';
-import { getApiKey } from './llm.js';
+import { getApiKey, describeProvider, probeLocal, normalizeBaseUrl, pickLocalModel, resetProbeCache } from './llm.js';
 import { tgToken, tgChatIds, tgApiBase } from './telegram.js';
 import { MODES, telegramMode, tgSettings, telegramRunning, inboxGoal } from './telegramChannel.js';
 import { paddleHealth } from './ocrEnsemble.js';
@@ -99,6 +99,31 @@ export async function saveTelegramToken(botToken, { fetchImpl = fetch } = {}) {
   return { ok: true, bot: { username: bot.username, name: bot.first_name } };
 }
 
+/* ---------- 모델 선택 — 내 PC 모델(키 불필요) 또는 Claude ---------- */
+/**
+ * @param {{provider?:'auto'|'anthropic'|'local'|'off', baseUrl?:string, model?:string}} patch
+ * local 을 고르면 서버를 실제로 두드려 보고, 모델이 없으면 무엇을 받아야 하는지 알려 준다.
+ */
+export async function setLlm(patch = {}, { fetchImpl = fetch } = {}) {
+  const provider = patch.provider || 'auto';
+  if (!['auto', 'anthropic', 'local', 'off'].includes(provider)) return { ok: false, error: `provider 는 auto·anthropic·local·off 중 하나예요 (받은 값: ${provider})` };
+  const next = { provider };
+  if (patch.baseUrl !== undefined) next.baseUrl = normalizeBaseUrl(patch.baseUrl);
+  if (patch.model !== undefined) next.model = String(patch.model || '').trim();
+  if (provider === 'anthropic' && !getApiKey()) return { ok: false, error: 'Claude 를 고르려면 먼저 키를 넣어 주세요' };
+  if (provider === 'local') {
+    const base = next.baseUrl || Settings.get('llm').baseUrl || process.env.CONDUIT_LLM_BASE_URL || 'http://localhost:11434/v1';
+    const found = await probeLocal(base, { fetchImpl, force: true });
+    if (!found) return { ok: false, error: `${base} 에 연결하지 못했어요. Ollama 를 켜 두었는지 확인해 주세요 (ollama.com 에서 설치 → 자동으로 켜져요)` };
+    if (!found.models.length) return { ok: false, error: '연결은 됐지만 받은 모델이 없어요. 터미널에서 `ollama pull gemma3:4b` 를 실행해 주세요 (약 3.3GB · 이미지도 봄)' };
+    if (next.model && !found.models.includes(next.model)) return { ok: false, error: `모델 '${next.model}' 이 없어요. 있는 모델: ${found.models.join(', ')}` };
+    if (!next.model && !Settings.get('llm').model) next.model = pickLocalModel(found.models);
+  }
+  Settings.set('llm', next);
+  resetProbeCache();
+  return { ok: true, llm: await describeProvider({ fetchImpl }) };
+}
+
 /* ---------- 상태 · 활동 ---------- */
 export async function status() {
   const s = Settings.get('agent');
@@ -106,6 +131,7 @@ export async function status() {
   const goal = inboxGoal();
   return {
     claude: { connected: !!getApiKey() },
+    llm: await describeProvider(),
     telegram: {
       connected: !!tgToken(), polling: telegramRunning(), bot: t.botUsername || null,
       chats: tgChatIds(), pendingChats: t.pendingChats || [], mode: telegramMode(),

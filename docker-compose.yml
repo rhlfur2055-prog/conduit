@@ -19,7 +19,9 @@ services:
       CONDUIT_API_KEY: ${CONDUIT_API_KEY:-}
       # 비워 두면 키가 있을 때 코드 실행이 꺼진다 (코드 노드 · JS 표현식 · 에이전트 run_code)
       CONDUIT_ALLOW_CODE: ${CONDUIT_ALLOW_CODE:-}
-      # 실제 Claude 호출을 켜려면 .env 에 설정 (또는 UI 자격 증명 사용)
+      # 모델 — 키 없이: 아래 ollama 서비스 (docker compose --profile local up). Claude: ANTHROPIC_API_KEY
+      CONDUIT_LLM_BASE_URL: ${CONDUIT_LLM_BASE_URL:-http://ollama:11434/v1}
+      CONDUIT_LLM_MODEL: ${CONDUIT_LLM_MODEL:-gemma3:4b}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # 동시 실행 상한 (큐 밀림 대응)
       CONDUIT_CONCURRENCY: ${CONDUIT_CONCURRENCY:-10}
@@ -38,5 +40,27 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # 키 없이 쓰는 PC 모델 — `docker compose --profile local up -d` 로 함께 뜬다.
+  # 첫 기동 때 모델(gemma3:4b, 약 2.5GB)을 받는다. GPU 가 있으면 아래 deploy 주석을 풀 것.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: conduit-ollama
+    profiles: ["local"]
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve &
+        sleep 3
+        ollama pull ${CONDUIT_LLM_MODEL:-gemma3:4b}
+        wait
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+
 volumes:
   conduit-data:
+  ollama-models:

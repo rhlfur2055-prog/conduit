@@ -384,7 +384,7 @@ export async function socraticRead({ image, text, lang = 'kor+eng', engine = 'au
       }],
     });
     if (r.simulated) {
-      return { simulated: true, note: 'ANTHROPIC_API_KEY 가 없어 소크라테스식 읽기는 건너뛰었습니다. OCR 결과는 그대로 들어 있습니다.', lines, ocr: ocrResult };
+      return { simulated: true, note: '연결된 모델이 없어(Claude 키 또는 PC 모델) 소크라테스식 읽기는 건너뛰었습니다. OCR 결과는 그대로 들어 있습니다.', lines, ocr: ocrResult };
     }
     if (r.error) return { error: true, note: r.text, lines, ocr: ocrResult };
     const g = parseJson(r.text) || {};
@@ -432,7 +432,7 @@ export async function socraticRead({ image, text, lang = 'kor+eng', engine = 'au
     focus ? `특히 알고 싶은 것 (첫 질문으로 다뤄라): ${focus}` : '',
   ].filter(Boolean).join('\n\n');
   const first = await ask({ system: proverSystem, prompt: userText });
-  if (first.simulated) return { simulated: true, note: 'ANTHROPIC_API_KEY 가 없어 소크라테스식 읽기는 건너뛰었습니다.', lines, ocr: ocrResult };
+  if (first.simulated) return { simulated: true, note: '연결된 모델이 없어(Claude 키 또는 PC 모델) 소크라테스식 읽기는 건너뛰었습니다.', lines, ocr: ocrResult };
   if (first.error) return { error: true, note: first.text, lines, ocr: ocrResult };
   const parsed = parseJson(first.text);
   if (!Array.isArray(parsed?.questions)) return { error: true, note: '질문 JSON 파싱 실패', raw: first.text, lines, ocr: ocrResult };

@@ -3,7 +3,7 @@
 // LLM 이 도구를 선택 → 서버가 실제로 실행 → 결과를 되먹임 → 반복.
 // nodeTypes 의 aiAgent 노드가 globalThis.__conduitAgent 로 사용한다.
 // ============================================================
-import { getApiKey } from './llm.js';
+import { getApiKey, getProvider } from './llm.js';
 import * as integrations from './integrations.js';
 import { Workflows } from './store.js';
 import { runFlow } from '../src/engine/executor.js';
@@ -224,8 +224,11 @@ export async function runAgent({ system, task, model, maxSteps = 4, toolNames, c
     for (const s of steps) {
       if (onStep) { await sleep(700); onStep(s); }
     }
+    const p = await getProvider();
     return {
       simulated: true,
+      localMode: p?.kind === 'local',
+      note: p?.kind === 'local' ? '내 PC 모델 모드 — 도구 호출(에이전트)은 아직 Claude 전용이라 예시로 대체했어요' : undefined,
       text: `〔예시〕 키가 설정되면 이 에이전트가 도구(${names.join(', ')})를 실제로 호출하며 "${String(task || '').slice(0, 50)}" 를 수행합니다. 아래는 타임라인 예시입니다.`,
       steps,
     };

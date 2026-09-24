@@ -523,3 +523,10 @@ button { font-family: inherit; }
 .easy-bubble.me { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
 .easy-bubble.bot { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--border); border-bottom-left-radius: 4px; color: var(--ink); }
 .easy-bubble-text { white-space: pre-wrap; }
+
+/* 쉬운 시작 — 두뇌 고르기 */
+.easy-mode small { display: block; color: var(--muted, #7a6f66); font-size: 12px; line-height: 1.4; }
+.easy-mode small.easy-ok { color: #0e9f6e; }
+.easy-mode:disabled { opacity: 0.55; cursor: not-allowed; }
+.easy-details { margin-top: 10px; }
+.easy-details summary { cursor: pointer; font-size: 13px; color: var(--muted, #7a6f66); }

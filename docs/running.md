@@ -35,6 +35,28 @@ npm run dev     # http://localhost:5173
 
 프로덕션 빌드: `npm run build` → `dist/`
 
+## 모델 고르기 — 키 없이(Ollama) · Claude · 사내 서버
+
+키를 넣지 않아도 됩니다. 서버는 이 순서로 두뇌를 고릅니다.
+
+1. `ANTHROPIC_API_KEY`(또는 화면에서 저장한 Claude 키)가 있으면 **Claude**
+2. `CONDUIT_LLM_BASE_URL` 이 있으면 그 **OpenAI 호환 서버** (`CONDUIT_LLM_MODEL` 로 모델 지정, `CONDUIT_LLM_API_KEY` 는 선택)
+3. 둘 다 없고 이 PC 의 `http://localhost:11434` 가 답하면 **Ollama 자동 사용** (60초마다 한 번 확인)
+4. 아무것도 없으면 시뮬레이션 — 노드는 돌고, 응답에 `simulated: true` 가 붙습니다
+
+키 없이 시작하기:
+
+```bash
+# https://ollama.com 에서 설치 (설치 후 자동으로 켜져 있음)
+ollama pull gemma3:4b      # 약 3.3GB · 한국어 · 이미지 입력 가능 · 생각 없이 바로 답함
+node server/index.js       # 쉬운 시작 화면에서 "내 PC 모델" 이 켜져 있는지 확인
+```
+
+- 화면에서 바꾸기: 쉬운 시작 → 2단계 **두뇌 고르기** → 내 PC 모델 / Claude. `PUT /api/agent/llm` `{ provider: 'auto'|'local'|'anthropic'|'off', baseUrl?, model? }` 로도 됩니다.
+- 추론 모델(`qwen3` 등)은 생각에 토큰을 다 쓰면 답이 비어 옵니다. 그 경우 노드가 오류와 함께 권장 모델을 알려 줍니다.
+- 테스트·CI 에서는 `CONDUIT_LLM_AUTODETECT=off` 로 자동 감지를 끕니다 (개발자 PC 의 Ollama 가 결과를 바꾸지 않게).
+- Docker: `docker compose --profile local up -d` 가 Ollama 컨테이너를 같이 띄우고 모델을 받습니다. GPU 를 쓰려면 `docker-compose.yml` 의 `deploy` 주석을 푸세요.
+
 ## OCR 엔진 (선택) — PaddleOCR 서버
 
 OCR·소크라테스식 읽기 노드는 `engine: auto` 일 때 PaddleOCR 서버가 떠 있으면 그것을, 없으면 tesseract.js 를 씁니다.

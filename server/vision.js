@@ -146,7 +146,7 @@ export async function understandScreen({ image, lang = 'kor+eng', hint = '', wit
   if (res.simulated) {
     return {
       simulated: true,
-      note: 'ANTHROPIC_API_KEY 가 없어 화면 이해는 건너뛰었습니다. OCR 결과는 그대로 들어 있습니다.',
+      note: '연결된 모델이 없어(Claude 키 또는 PC 모델) 화면 이해는 건너뛰었습니다. OCR 결과는 그대로 들어 있습니다.',
       ocr: ocrResult,
     };
   }

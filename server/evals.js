@@ -207,9 +207,9 @@ async function cli(argv) {
     llm = buildDryRunLLM(suite.dryRun);
     console.error('dry-run: 평가 파일의 dryRun 규칙으로 만든 가짜 LLM 을 씁니다 (실행기·리포트 확인용, 모델 품질과 무관)');
   } else {
-    const { callLLM, getApiKey } = await import('./llm.js');
-    if (!getApiKey()) {
-      console.error('ANTHROPIC_API_KEY 가 없어 실제 평가를 실행할 수 없습니다. 키를 설정하거나 --dry-run 으로 실행기만 확인하세요.');
+    const { callLLM, getProvider } = await import('./llm.js');
+    if (!(await getProvider())) {
+      console.error('연결된 모델이 없어 실제 평가를 실행할 수 없습니다. ANTHROPIC_API_KEY 를 설정하거나 Ollama 를 켜거나, --dry-run 으로 실행기만 확인하세요.');
       process.exit(2);
     }
     llm = callLLM;

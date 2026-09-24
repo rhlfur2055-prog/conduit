@@ -65,7 +65,7 @@ describe('화면 이해 — 키가 없어도 워크플로를 막지 않는다', 
         withOcr: false,            // OCR 은 여기서 돌리지 않는다 (네트워크 불필요)
       });
       expect(r.simulated).toBe(true);
-      expect(r.note).toMatch(/ANTHROPIC_API_KEY/);
+      expect(r.note).toMatch(/연결된 모델이 없어/);
     } finally { if (saved) process.env.ANTHROPIC_API_KEY = saved; }
   });
 

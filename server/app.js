@@ -16,6 +16,7 @@ import { mcpTools, mcpServer } from './routes/mcp.js';
 import { dlq } from './routes/dlq.js';
 import { approvals } from './routes/approvals.js';
 import { agent } from './routes/agent.js';
+import { why } from './routes/why.js';
 
 export function createApp() {
   const app = express();
@@ -43,6 +44,7 @@ export function createApp() {
   app.use('/api', workflows);      // /api/workflows, /api/run, /api/executions, /api/credentials
   app.use('/api', dlq);            // /api/dlq, /api/idempotency
   app.use('/api', approvals);      // /api/approvals — 사람 승인 대기 목록·결정
+  app.use('/api', why);            // /api/why — 운영 기록을 벡터로 찾아 "왜" 를 소크라테스식으로 답한다
   app.use('/api', agent);          // /api/goals, /api/heartbeat — 목표·하트비트 (스스로 일을 시작)
   app.use('/api/mcp', mcpTools);   // /api/mcp/tools
   app.use('/mcp', mcpServer);

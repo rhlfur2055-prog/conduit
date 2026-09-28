@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { resolveString, evalPath } from '../../src/engine/expr.js';
-import { runFlow } from '../../src/engine/executor.js';
-import { NODE_TYPES } from '../../src/engine/nodeTypes.js';
+import { resolveString, evalPath } from '../../src/engine/expr.ts';
+import { runFlow } from '../../src/engine/executor.ts';
+import { NODE_TYPES } from '../../src/engine/nodeTypes.ts';
 
 const safe = {
   $json: { name: '동근', 고객: { 이름: '김민수' }, '주문 번호': 'A-7', tags: ['a', 'b'] },

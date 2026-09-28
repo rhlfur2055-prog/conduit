@@ -6,17 +6,18 @@
 // backend:true 인 노드는 실제 연동에 서버가 필요 → 지금은 시뮬레이션 결과를 낸다.
 // ============================================================
 
-import { toItems, stableKey } from './items.js';
+import { toItems, stableKey } from './items.ts';
+import type { Item, LLMArgs, LLMResult, NodeDefinition } from './types.ts';
 
-export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export const getPath = (obj, path) =>
+export const getPath = (obj: unknown, path: unknown): unknown =>
   String(path || '')
     .split('.')
     .filter(Boolean)
-    .reduce((o, k) => (o == null ? undefined : o[k]), obj);
+    .reduce<unknown>((o, k) => (o == null ? undefined : (o as Record<string, unknown>)[k]), obj);
 
-function compare(a, op, b) {
+function compare(a: unknown, op: string, b: unknown): boolean {
   switch (op) {
     case '==': return String(a) === String(b);
     case '!=': return String(a) !== String(b);
@@ -24,13 +25,13 @@ function compare(a, op, b) {
     case '<': return Number(a) < Number(b);
     case '>=': return Number(a) >= Number(b);
     case '<=': return Number(a) <= Number(b);
-    case 'contains': return String(a).includes(b);
+    case 'contains': return String(a).includes(String(b));
     case 'isEmpty': return a === undefined || a === null || a === '';
     default: return false;
   }
 }
 
-function simpleHash(str) {
+function simpleHash(str: string): string {
   let h = 5381;
   for (let i = 0; i < str.length; i++) h = ((h << 5) + h) + str.charCodeAt(i);
   return (h >>> 0).toString(16);
@@ -38,7 +39,7 @@ function simpleHash(str) {
 
 // LLM 브리지: 서버가 globalThis.__conduitLLM 을 주입하면 실제 Claude 호출,
 // 브라우저(주입 없음)에서는 시뮬레이션 결과를 낸다.
-async function callLLM({ system, prompt, model, messages }) {
+async function callLLM({ system, prompt, model, messages }: LLMArgs): Promise<LLMResult> {
   const bridge = globalThis.__conduitLLM;
   if (bridge) return bridge({ system, prompt, model, messages });
   return {
@@ -50,14 +51,14 @@ const AI_MODELS = ['claude-sonnet-5', 'claude-opus-5', 'claude-haiku-4-5-2025100
 
 // 통합 브리지: 서버가 globalThis.__conduitIntegrations 를 주입하면 실제 API 호출,
 // 브라우저(주입 없음)에서는 "서버 필요" 안내를 낸다.
-async function callIntegration(name, args) {
+export async function callIntegration(name: string, args: Record<string, unknown>): Promise<any> {
   const bridge = globalThis.__conduitIntegrations;
   if (bridge && bridge[name]) return bridge[name](args);
   return { simulated: true, note: `${name} 연동은 서버 실행 + 크리덴셜이 필요합니다. 상단바 "서버 실행" 을 눌러주세요.` };
 }
 
 // 도구를 실제로 호출하는 에이전트 브리지 (서버에서 tool_use 루프 실행)
-async function callAgent(args) {
+async function callAgent(args: Record<string, unknown>): Promise<any> {
   const bridge = globalThis.__conduitAgent;
   if (bridge) return bridge(args);
   return { simulated: true, text: '〔시뮬레이션〕 서버에서 실행하면 도구를 실제로 호출하는 에이전트가 동작합니다.', steps: [] };
@@ -65,8 +66,8 @@ async function callAgent(args) {
 const AGENT_TOOLS = ['run_code', 'http_get', 'http_auth', 'youtube_search', 'naver_search', 'slack_post', 'notion_create', 'run_workflow', 'mcp_list_tools', 'mcp_call'];
 
 // "slack=내슬랙, notion=업무" → { slack:'내슬랙', notion:'업무' }
-function parseCreds(str) {
-  const out = {};
+function parseCreds(str: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
   String(str || '').split(',').forEach((pair) => {
     const [k, v] = pair.split('=');
     if (k && v) out[k.trim()] = v.trim();
@@ -76,7 +77,7 @@ function parseCreds(str) {
 
 const OPS = ['==', '!=', '>', '<', '>=', '<=', 'contains', 'isEmpty'];
 
-export const NODE_TYPES = {
+export const NODE_TYPES: Record<string, NodeDefinition> = {
   /* ---------------- 트리거 ---------------- */
   manualTrigger: {
     title: '수동 트리거', icon: 'cursor', color: '#9a7b4f', category: '트리거',
@@ -134,6 +135,7 @@ export const NODE_TYPES = {
   /* ---------------- 동작 ---------------- */
   httpRequest: {
     title: 'HTTP 요청', icon: 'globe', color: '#5f7fa3', category: '동작',
+    sends: (p) => String(p.method || 'GET').toUpperCase() !== 'GET',     // GET 은 읽기, 나머지는 발송
     inputs: ['main'], outputs: ['main'],
     defaults: { method: 'GET', url: 'https://api.github.com/zen', body: '' },
     fields: [
@@ -143,7 +145,7 @@ export const NODE_TYPES = {
     ],
     summary: (p) => `${p.method} · ${p.url}`,
     run: async (_i, p) => {
-      const opt = { method: p.method };
+      const opt: RequestInit = { method: p.method };
       if (p.method !== 'GET' && p.body) { opt.headers = { 'Content-Type': 'application/json' }; opt.body = p.body; }
       const res = await fetch(p.url, opt);
       const ct = res.headers.get('content-type') || '';
@@ -318,7 +320,7 @@ export const NODE_TYPES = {
     summary: (p) => `${p.field} → ${p.v1}/${p.v2}/${p.v3}`,
     run: async (i, p) => {
       const val = String(getPath(i.main, p.field));
-      const out = { 1: undefined, 2: undefined, 3: undefined, 기타: undefined };
+      const out: Record<string, unknown> = { 1: undefined, 2: undefined, 3: undefined, 기타: undefined };
       if (val === p.v1) out['1'] = i.main;
       else if (val === p.v2) out['2'] = i.main;
       else if (val === p.v3) out['3'] = i.main;
@@ -370,16 +372,16 @@ export const NODE_TYPES = {
     run: async (i, p) => {
       const parent = i.main || {};
       const arr = toItems(getPath(parent, p.fieldToSplitOut));
-      let base = {};
+      let base: Item = {};
       if (p.include === 'all') {
         base = { ...parent };
         delete base[String(p.fieldToSplitOut).split('.')[0]];
       } else if (p.include === 'selected' && p.includeFields) {
         for (const f of String(p.includeFields).split(',').map((s) => s.trim()).filter(Boolean)) {
-          base[f.split('.').pop()] = getPath(parent, f);
+          base[f.split('.').pop() ?? f] = getPath(parent, f);
         }
       }
-      return { main: arr.map((el) => (el && typeof el === 'object' ? { ...base, ...el } : { ...base, value: el })) };
+      return { main: arr.map((el) => (el && typeof el === 'object' ? { ...base, ...(el as Item) } : { ...base, value: el })) };
     },
   },
   aggregate: {
@@ -394,9 +396,9 @@ export const NODE_TYPES = {
     ],
     summary: (p) => `${p.operation}(${p.field || '*'}) → ${p.target}`,
     run: async (i, p) => {
-      const items = i.main || [];
+      const items: Item[] = i.main || [];
       const nums = () => items.map((it) => Number(getPath(it, p.field))).filter((n) => Number.isFinite(n));
-      let value;
+      let value: unknown;
       switch (p.operation) {
         case 'sum': value = nums().reduce((a, b) => a + b, 0); break;
         case 'avg': { const n = nums(); value = n.length ? n.reduce((a, b) => a + b, 0) / n.length : 0; break; }
@@ -437,7 +439,7 @@ export const NODE_TYPES = {
     ],
     summary: (p) => `${p.field} ${p.order}`,
     run: async (i, p) => {
-      const items = [...(i.main || [])];
+      const items: Item[] = [...(i.main || [])];
       const dir = p.order === 'desc' ? -1 : 1;
       items.sort((a, b) => {
         const av = getPath(a, p.field);
@@ -457,8 +459,8 @@ export const NODE_TYPES = {
     fields: [{ key: 'field', label: '기준 필드 (비우면 아이템 전체 비교)', type: 'text' }],
     summary: (p) => (p.field ? `${p.field} 기준` : '전체 비교'),
     run: async (i, p) => {
-      const seen = new Set();
-      const out = [];
+      const seen = new Set<string>();
+      const out: Item[] = [];
       for (const it of i.main || []) {
         const key = p.field ? stableKey(getPath(it, p.field)) : stableKey(it);
         if (seen.has(key)) continue;
@@ -506,7 +508,7 @@ export const NODE_TYPES = {
     },
   },
   screenUnderstand: {
-    title: '화면 이해 (무슨 기능인지)', icon: 'sparkles', color: '#7c5cbf', category: 'AI', backend: true,
+    title: '화면 이해 (무슨 기능인지)', icon: 'sparkles', color: '#7c5cbf', category: 'AI', backend: true, llm: true,
     inputs: ['main'], outputs: ['main'],
     defaults: { image: '{{ $json.image }}', lang: 'kor+eng', hint: '', withOcr: 'true' },
     fields: [
@@ -525,7 +527,7 @@ export const NODE_TYPES = {
     },
   },
   socraticRead: {
-    title: '소크라테스식 읽기 (검증된 이해)', icon: 'sparkles', color: '#7c5cbf', category: 'AI', backend: true,
+    title: '소크라테스식 읽기 (검증된 이해)', icon: 'sparkles', color: '#7c5cbf', category: 'AI', backend: true, llm: true,
     inputs: ['main'], outputs: ['main'],
     defaults: { image: '{{ $json.image }}', text: '', focus: '', title: '', engine: 'auto', lang: 'kor+eng', rounds: '2', learn: 'true', memory: 'true', model: 'claude-sonnet-5' },
     fields: [
@@ -615,7 +617,7 @@ export const NODE_TYPES = {
 
   /* ---------------- 연동 (실제 API · 서버 실행 + 크리덴셜 필요) ---------------- */
   slack: {
-    title: 'Slack 메시지', icon: 'output', color: '#611f69', category: '연동', backend: true,
+    title: 'Slack 메시지', icon: 'output', color: '#611f69', category: '연동', backend: true, sends: true,
     inputs: ['main'], outputs: ['main'],
     defaults: { credential: '', channel: '#general', text: '{{ $json.name }} 이벤트 발생' },
     fields: [
@@ -630,7 +632,7 @@ export const NODE_TYPES = {
     },
   },
   telegram: {
-    title: '텔레그램 메시지', icon: 'output', color: '#2aabee', category: '연동', backend: true,
+    title: '텔레그램 메시지', icon: 'output', color: '#2aabee', category: '연동', backend: true, sends: true,
     inputs: ['main'], outputs: ['main'],
     defaults: { chatId: '', text: '{{ $json.name }} 이벤트 발생' },
     fields: [
@@ -645,7 +647,7 @@ export const NODE_TYPES = {
     },
   },
   gmail: {
-    title: 'Gmail 보내기', icon: 'output', color: '#c5221f', category: '연동', backend: true,
+    title: 'Gmail 보내기', icon: 'output', color: '#c5221f', category: '연동', backend: true, sends: true,
     inputs: ['main'], outputs: ['main'],
     defaults: { credential: '', to: 'user@example.com', subject: '알림: {{ $json.name }}', text: '본문을 입력하세요' },
     fields: [
@@ -661,7 +663,7 @@ export const NODE_TYPES = {
     },
   },
   notion: {
-    title: 'Notion 페이지 생성', icon: 'edit', color: '#111111', category: '연동', backend: true,
+    title: 'Notion 페이지 생성', icon: 'edit', color: '#111111', category: '연동', backend: true, sends: true,
     inputs: ['main'], outputs: ['main'],
     defaults: { credential: '', databaseId: '', titleProp: 'Name', title: '{{ $json.name }}', content: '' },
     fields: [
@@ -732,6 +734,7 @@ export const NODE_TYPES = {
   },
   mcpTool: {
     title: 'MCP 도구 호출', icon: 'bolt', color: '#7c5cbf', category: '연동', backend: true,
+    sends: (p) => !!p.tool,                                                 // 도구 이름이 없으면 목록 조회 = 읽기
     inputs: ['main'], outputs: ['main'],
     defaults: { credential: '', tool: '', args: '{\n}' },
     fields: [
@@ -747,6 +750,7 @@ export const NODE_TYPES = {
   },
   httpAuth: {
     title: 'HTTP 요청 (인증)', icon: 'key', color: '#5f7fa3', category: '연동', backend: true,
+    sends: (p) => String(p.method || 'GET').toUpperCase() !== 'GET',
     inputs: ['main'], outputs: ['main'],
     defaults: {
       credential: '', authType: 'bearer', method: 'GET',
@@ -772,7 +776,7 @@ export const NODE_TYPES = {
 
   /* ---------------- AI (n8n이 불편한 것들 · 서버 실행 권장) ---------------- */
   ai: {
-    title: 'AI · Claude', icon: 'spark', color: '#cc785c', category: 'AI', backend: true,
+    title: 'AI · Claude', icon: 'spark', color: '#cc785c', category: 'AI', backend: true, llm: true,
     inputs: ['main'], outputs: ['main'],
     defaults: {
       model: 'claude-sonnet-5',
@@ -791,7 +795,7 @@ export const NODE_TYPES = {
     },
   },
   aiExtract: {
-    title: 'AI 구조화 추출', icon: 'spark', color: '#cc785c', category: 'AI', backend: true,
+    title: 'AI 구조화 추출', icon: 'spark', color: '#cc785c', category: 'AI', backend: true, llm: true,
     inputs: ['main'], outputs: ['main'],
     defaults: { model: 'claude-sonnet-5', instruction: '이름과 금액을 추출해 JSON으로', target: 'extracted' },
     fields: [
@@ -812,7 +816,7 @@ export const NODE_TYPES = {
     },
   },
   aiAgent: {
-    title: 'AI 에이전트 (도구 사용)', icon: 'bolt', color: '#cc785c', category: 'AI', backend: true,
+    title: 'AI 에이전트 (도구 사용)', icon: 'bolt', color: '#cc785c', category: 'AI', backend: true, llm: true,
     inputs: ['main'], outputs: ['main'],
     defaults: {
       model: 'claude-sonnet-5',
@@ -843,7 +847,7 @@ export const NODE_TYPES = {
         maxSteps: Number(p.maxSteps) || 4,
         toolNames,
         creds: parseCreds(p.toolCreds),
-        onStep: ctx?.onAgentStep ? (step) => ctx.onAgentStep(step) : undefined,
+        onStep: ctx?.onAgentStep ? (step: unknown) => ctx.onAgentStep!(step) : undefined,
       });
       return {
         main: {
@@ -856,7 +860,7 @@ export const NODE_TYPES = {
     },
   },
   loopRefine: {
-    title: '루프 엔지니어링', icon: 'flow', color: '#cc785c', category: 'AI', backend: true,
+    title: '루프 엔지니어링', icon: 'flow', color: '#cc785c', category: 'AI', backend: true, llm: true,
     inputs: ['main'], outputs: ['main'],
     defaults: {
       model: 'claude-sonnet-5',
@@ -874,7 +878,7 @@ export const NODE_TYPES = {
     run: async (i, p) => {
       const iters = Math.min(5, Math.max(1, Number(p.iterations) || 3));
       let out = '';
-      const history = [];
+      const history: string[] = [];
       for (let k = 0; k < iters; k++) {
         const instr = k === 0 ? p.prompt : `다음 결과를 "${p.criterion}" 기준으로 개선하라:\n${out}`;
         const r = await callLLM({ prompt: instr, model: p.model });
@@ -907,7 +911,7 @@ export const NODE_TYPES = {
 // 카테고리 자동 구성 (등록 순서 유지)
 export const PALETTE_GROUPS = (() => {
   const order = ['트리거', 'AI', '동작', '배열', '흐름 제어', '연동', '영상', '수익화', '출력'];
-  const map = {};
+  const map: Record<string, string[]> = {};
   for (const [k, v] of Object.entries(NODE_TYPES)) {
     (map[v.category] ||= []).push(k);
   }
@@ -915,7 +919,7 @@ export const PALETTE_GROUPS = (() => {
 })();
 
 // 출력 맵에서 아이템 개수 (뱃지용) — 모든 포트 합산
-export function itemCount(output) {
+export function itemCount(output: Record<string, unknown> | undefined | null): number {
   if (!output) return 0;
   const v = output.main ?? output.true ?? output.false ?? Object.values(output).find((x) => x !== undefined);
   return toItems(v).length;

@@ -7,9 +7,13 @@
 ```
 src/
 ├─ engine/
-│  ├─ nodeTypes.js   # 노드 정의(메타 + 필드 + run) — UI 독립, 프론트/백엔드 공용
-│  ├─ executor.js    # 위상정렬 실행 + seed 주입 + 입/출력 캡처
-│  └─ expr.js        # {{ }} 표현식 해석
+│  ├─ types.ts       # Item · NodeDefinition · NodeResult 등 엔진의 데이터 모양 (서버 JS 는 JSDoc 으로 가져다 쓴다)
+│  ├─ nodeTypes.ts   # 노드 정의(메타 + 필드 + run) — UI 독립, 프론트/백엔드 공용
+│  ├─ executor.ts    # 위상정렬 실행 + seed 주입 + 입/출력 캡처 + 자동 승인 게이트
+│  ├─ gates.ts       # AI→발송 경로에 승인이 없는지 그래프로 판정 (실행기와 lint API 가 같이 쓴다)
+│                    # 실행 추적: runtime.js 가 노드마다 status·attempts·ms·injected·kind 를 남기고 GET /api/executions/:id/trace 가 승인·DLQ 와 묶는다
+│                    # 작업 큐: server/queue.js(jobs 테이블 · claimNext 한 문장 · 임대) · server/worker.js(별도 워커 프로세스)
+│  └─ expr.ts        # {{ }} 표현식 해석
 ├─ ui/icons.jsx      # 라인 SVG 아이콘
 ├─ components/       # FlowNode · Sidebar · NodePanel · Inspector(NDV) · LogPanel
 ├─ api.js           # 백엔드 API 클라이언트
@@ -18,7 +22,8 @@ src/
 
 server/               # Node/Express 백엔드
 ├─ index.js          # 라우트 + 웹훅 + 크론
-├─ store.js          # 파일 영속화 + 크리덴셜 AES 암호화
+├─ db.js             # SQLite(node:sqlite) 연결 · 스키마 · 트랜잭션 · 기존 JSON 이관
+├─ store.js          # 저장소 API — 운영 기록은 SQLite, 설정은 JSON 파일 + 크리덴셜 AES 암호화
 └─ llm.js            # Anthropic 호출 브리지
 ```
 
@@ -40,7 +45,8 @@ server/
     webhooks.js   /webhook/*  (공개 · HMAC 서명 검증 + 멱등성)
     mcp.js        /api/mcp/tools (외부 MCP 도구 목록) · /mcp (Conduit = MCP 서버)
     dlq.js        /api/dlq · /api/idempotency
-  store.js        JSON 파일 저장소 + 크리덴셜 AES-256-GCM (CONDUIT_DATA_DIR 로 위치 변경 가능)
+  db.js           SQLite 연결(conduit.db, WAL) · 스키마 · BEGIN IMMEDIATE 트랜잭션 · 기존 JSON 기록 이관
+  store.js        저장소 API — 승인·멱등 키·DLQ·실행 기록은 SQLite, 워크플로·크리덴셜·사람·설정은 JSON 파일 (CONDUIT_DATA_DIR 로 위치 변경 가능)
 ```
 
 - 테스트는 `CONDUIT_DATA_DIR` 을 임시 폴더로 잡아 실제 `server/data` 를 건드리지 않습니다.

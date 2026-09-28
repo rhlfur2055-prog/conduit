@@ -9,9 +9,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { NODE_TYPES } from '../src/engine/nodeTypes.js';
-import { resolveParams } from '../src/engine/expr.js';
-import { getPath, stableKey } from '../src/engine/items.js';
+import { NODE_TYPES } from '../src/engine/nodeTypes.ts';
+import { resolveParams } from '../src/engine/expr.ts';
+import { getPath, stableKey } from '../src/engine/items.ts';
 
 const isMain = !!process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 

@@ -5,7 +5,9 @@
 [![test](https://github.com/rhlfur2055-prog/conduit/actions/workflows/test.yml/badge.svg)](https://github.com/rhlfur2055-prog/conduit/actions/workflows/test.yml)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-![Conduit demo — five orders branch by amount into 3 VIP and 2 small orders](docs/demo.gif)
+![Conduit canvas in English — five orders branch by amount into 3 VIP orders (total 128,000) and 2 small orders](docs/screenshot-canvas-en.png)
+
+*The whole UI switches between English and Korean with one button (bottom left): sidebar, toolbar, node names, settings panel and the run log.*
 
 Conduit is a **node-based workflow engine** (in the spirit of n8n / Make) built around one question companies ask
 before letting AI touch customers: *what stops it from sending the wrong thing?*
@@ -19,16 +21,16 @@ The answer runs through the whole codebase:
 | | |
 |---|---|
 | **What** | Workflow engine with a human-approval gate, a verification layer for LLM output, and MCP in both directions (personal project, Aug 2026 –) |
-| **Stack** | Node.js · Express / React · React Flow · Vite / Docker · GitHub Actions |
+| **Stack** | TypeScript (engine core, strict) · JavaScript (server, UI) / Node.js · Express / React · React Flow · Vite / Docker · GitHub Actions |
 | **Size** | ~11,000 lines (engine + server + UI) · 45 node types |
-| **Tests** | **428 Vitest tests** + a **33-step end-to-end check** that drives a real server process over HTTP |
+| **Tests** | **442 Vitest tests** (incl. one that SIGKILLs a real server mid-resume and restarts it) + a **33-step end-to-end check** over HTTP |
 | **Brain** | **No API key required.** If [Ollama](https://ollama.com) is running, Conduit uses the model on your PC and nothing leaves your machine. Add a Claude key only if you want it. |
 | **History** | Git history starts 2026-09-19: the repo was re-initialised before going public so no secrets remain. Earlier work is in [docs/devlog.md](docs/devlog.md). |
 
 **Try it without installing:** [rhlfur2055-prog.github.io/conduit](https://rhlfur2055-prog.github.io/conduit/) — the canvas runs the engine in your browser; integration nodes simulate.
 
 ```bash
-npm install && npm test        # 428 tests, no keys needed
+npm install && npm test        # 442 tests, no keys needed
 node server/index.js           # server + built UI → http://localhost:8787
 node server/local.e2e.js       # end-to-end: real server, fake Telegram/Anthropic, 33 checks
 ```
@@ -57,21 +59,24 @@ Resume log — `●` is *injected*, `✔` is *executed*:
 ⤵ reject handler   — skipped (no input)
 ```
 
+**Approval by policy, not by wiring.** Placing an approval node is a choice, and a forgotten node means an AI draft goes out unreviewed. So the engine also enforces it: if a *sending* node (Telegram, Slack, Gmail, Notion, non-GET HTTP, MCP tool call) is reachable from a *model-output* node (AI, extract, agent, Socratic reading, screen understanding) with no approval node in between, the run **stops in front of the send and asks a human** — same buttons, same resume, same crash safety. The decision is made on the graph, not on data, so a code node that strips fields cannot slip past it, and `POST /api/workflows/lint` reports unguarded paths before you save. Default on; `CONDUIT_AI_GATE=off` disables it (turning it off has to be explicit).
+
 Design decisions that make this safe rather than merely convenient:
 
 - **Two-phase pause.** While the node runs, only a record exists (`preparing`). The snapshot is committed and the message sent *after* execution finishes (`pending`). No button can be pressed mid-run, and no node runs twice on resume.
 - **Everything below the gate is skipped**, so multi-input nodes (Merge) never run on half their inputs. Unrelated branches keep flowing.
-- **Idempotent decisions.** Pressing the button twice resumes once. If resume fails, the user sees "approved but failed" with a 🔁 retry button.
-- **Survives restarts.** Waiting runs are persisted; runs that died mid-resume are found and reported at startup.
+- **Idempotent decisions.** A decision is one `UPDATE … WHERE status = 'pending'` — a compare-and-set the database performs, so two presses (or two processes) resume once. The same statement records that the resume has started, so there is no gap between "decided" and "resuming" for a crash to fall into. If resume fails, the user sees "approved but failed" with a 🔁 retry button.
+- **Survives restarts.** Waiting runs and decisions live in SQLite; a run that died mid-resume is found and reported at startup, and 🔁 retry resumes it. Proven by a test that **SIGKILLs a real server process in the middle of a resume** and restarts it on the same data directory (`tests/server/crash.test.js`).
 - **Never passes silently.** No channel or a failed send raises a node error instead of behaving as if approved.
 
 | | |
 |---|---|
 | Node | `approvalRequest` — approved / rejected / expired ports · one reminder · expiry |
+| Policy | `src/engine/gates.ts` — unguarded AI→send paths become an automatic gate at run time; `POST /api/workflows/lint` lists them at design time |
 | Channel | Telegram buttons, long-polling (no public URL), only the originating chat's decision is accepted |
 | API | `GET /api/approvals` · `POST /api/approvals/:id/decide` (API-key auth) |
 | Extend | another channel is one adapter (`setApprovalAdapter`) |
-| Code | `server/approvals.js` · `server/telegram.js` · `src/engine/executor.js` (waiting state) |
+| Code | `server/approvals.js` · `server/telegram.js` · `src/engine/executor.ts` (waiting state) |
 
 ---
 
@@ -92,8 +97,18 @@ Each layer was measured on data with known answers; thresholds were tuned on one
 | **Stress test** | A deliberately wrong, stubborn fake LLM | wrong answers reaching output: **5.1%** vs **100%** for a no-verification baseline |
 
 **Honest limits.** Every LLM-involving number above was run against a *scripted* fake API — it measures the safety net,
-not Claude's answer quality, which hasn't been measured. The "no-verification baseline" is a reproduction of openclaw's
-published design inside this repo, **not** openclaw itself; no head-to-head benchmark was run.
+not answer quality. The "no-verification baseline" is a reproduction of openclaw's published design inside this repo,
+**not** openclaw itself; no head-to-head benchmark was run.
+
+**With a real model** (`npm run eval:live`, same 8 documents, one trap question each that the document cannot answer; single run, small sample):
+
+| Model | What the model produced | What the code did with it |
+|---|---|---|
+| Local · gemma3:4b (Ollama, RTX 5070) | 8 answers, 30 summary sentences, 118 s | **7 answers verified**, 1 refuted (a value not in the cited line) and repaired on the next round; **11 of 30 summary sentences dropped** for having no verbatim basis; **0 invented values reached a verified answer**; the model ignored 5 of 8 trap questions and answered 3 without inventing a value |
+| Local · qwen3:4b | — | Unusable in this pipeline: a 4B *reasoning* model spends its whole token budget thinking and returns an empty answer. Reported as a failure, not hidden. |
+| Claude | not yet measured | needs an API key; same command |
+
+The point is not that a 4B model is good (it isn't — it asks few questions and skips most traps). It is that **the verification layer does not care which model answered**: the same code refuted the unsupported value and dropped the ungrounded sentences.
 
 Specs with the measurements written back: [`.specify/memory/constitution.md`](.specify/memory/constitution.md) ·
 [`specs/001`](specs/001-verified-memory/spec.md) · [`003`](specs/003-value-grounding/spec.md) · [`004`](specs/004-goals-heartbeat/spec.md) ·
@@ -106,10 +121,13 @@ Specs with the measurements written back: [`.specify/memory/constitution.md`](.s
 - **One engine, two runtimes** — `src/engine/` runs identically in the browser (preview) and on the server. Server-only capabilities (LLM, integrations, agent) are injected through a bridge; the browser gets simulated responses.
 - **Item-array data model** — like n8n: items flow between nodes, plain nodes handle one item and the engine loops, IF/Switch branch per item, failed items go to a **dead-letter queue** instead of killing the run.
 - **Retry with exponential backoff**, Continue-On-Fail, Error Trigger.
-- **Idempotency** — webhooks and approvals deduplicate by key; the same request twice runs once.
+- **Idempotency** — webhook keys are a `PRIMARY KEY` in SQLite and a claim is a single upsert, so the same request twice runs once even under concurrency (100 simultaneous claims → 1 winner, tested).
+- **Operational records in SQLite** (built-in `node:sqlite`, no native dependency): approvals, idempotency keys, dead letters, executions — the records that must survive a crash and reject duplicates. Configuration (workflows, credentials, people) stays in JSON files because it is small and human-editable. Legacy JSON records migrate on first start.
 - **Webhooks with HMAC signature verification** (Slack / GitHub / Stripe style), cron and interval schedules.
 - **Security defaults** — API-key auth with `timingSafeEqual` (local-only when no key is set), DNS-rebinding and cross-origin blocked, secrets encrypted at rest (AES-256-GCM) and never returned by the API, code execution can be disabled on servers.
 - **Ops** — GitHub Actions on every push, single-container Docker.
+- **Work queue, not request handlers** — webhooks and cron ticks are *enqueued* (SQLite `jobs` table) and a worker runs them: the worker inside the server by default, or any number of `node server/worker.js` processes sharing the same database. "Take the next job" is one `UPDATE … RETURNING` with a lease, so two workers never take the same job; a worker that dies stops renewing its lease and another worker takes the job over (at-least-once — which is why sends sit behind the approval gate and triggers carry idempotency keys). A cron tick is keyed by the minute, so two servers firing the same schedule produce one job. Proven by tests that spawn two real worker processes over 30 jobs (every job ran exactly once) and SIGKILL a worker mid-job (the other finishes it, `attempts: 2`, one execution record).
+- **Trace one run end to end** — every execution gets its id *before* it runs, so the approvals it raises and the dead letters it isolates hang off it. `GET /api/executions/:id/trace` returns, per node: status, attempts (retries included), time, items in → out, whether it was *injected* from a snapshot rather than executed; plus the approvals this run raised (gate type, decision, who, when, resume result → link to the resumed run), which approval this run was the resume of, and the isolated failures. The executions panel renders it, so "why did this go out?" is answered by clicking, not by reading logs.
 
 Bugs the test suite found while being written (the reason it exists):
 

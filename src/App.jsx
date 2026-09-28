@@ -13,8 +13,8 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { NODE_TYPES } from './engine/nodeTypes.js';
-import { runFlow } from './engine/executor.js';
+import { NODE_TYPES } from './engine/nodeTypes.ts';
+import { runFlow } from './engine/executor.ts';
 import { FlowActions } from './flowActions.js';
 import { api, authFetch, getApiKey, setApiKey } from './api.js';
 import { Icon } from './ui/icons.jsx';
@@ -27,6 +27,11 @@ import CredentialsModal from './components/CredentialsModal.jsx';
 import ExecutionsModal from './components/ExecutionsModal.jsx';
 import DlqModal from './components/DlqModal.jsx';
 import EasyStart from './components/EasyStart.jsx';
+import { useLang, getLang, tr, displayWfName } from './i18n.js';
+
+// 이벤트 처리기 안에서 쓰는 문구 — 누른 순간의 언어로 (훅 의존성을 늘리지 않는다)
+const T = (k, v) => tr(getLang(), k, v);
+
 
 const nodeTypes = { flowNode: FlowNode };
 const STORAGE_KEY = 'conduit:v1';
@@ -106,6 +111,8 @@ function Editor() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
   const [log, setLog] = useState([]);
+  const lang = useLang();
+  const t = (k, v) => tr(lang, k, v);
   const [running, setRunning] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [active, setActive] = useState(false);
@@ -131,7 +138,7 @@ function Editor() {
   // 서버가 CONDUIT_API_KEY 로 보호될 때 쓸 키 입력 (이 브라우저에만 저장)
   const openSettings = useCallback(() => {
     const next = window.prompt(
-      '서버 API 키 — 서버의 CONDUIT_API_KEY 와 같은 값을 넣으세요.\n비워 두고 확인하면 저장된 키를 지웁니다.',
+      T('prompt.apiKey'),
       getApiKey(),
     );
     if (next === null) return;
@@ -286,7 +293,7 @@ function Editor() {
   // 백엔드 스트리밍 실행 (SSE) — 노드 상태·로그·에이전트 스텝이 실시간으로 흐른다
   const runOnServer = useCallback(async () => {
     setRunning(true);
-    setLog([{ kind: 'info', msg: '서버에서 실행 중… (실시간 스트리밍)' }]);
+    setLog([{ kind: 'info', msg: T('log.serverRunning') }]);
     setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: null, result: undefined } })));
 
     const handle = (evt) => {
@@ -314,7 +321,7 @@ function Editor() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(`${res.status} ${err.error || ''} — 사이드바 "설정"에서 API 키를 확인하세요.`);
+        throw new Error(`${res.status} ${err.error || ''} ${T('log.checkKey')}`);
       }
       const reader = res.body.getReader();
       const dec = new TextDecoder();
@@ -332,7 +339,7 @@ function Editor() {
         }
       }
     } catch (e) {
-      setLog((l) => [...l, { kind: 'err', msg: '서버 실행 실패: ' + e.message }]);
+      setLog((l) => [...l, { kind: 'err', msg: T('log.serverFail') + e.message }]);
     }
     setRunning(false);
   }, [nodes, edges, setNodes, setNodeStatus, appendLiveStep]);
@@ -345,7 +352,7 @@ function Editor() {
   const closeInspector = () => setNodes((nds) => nds.map((n) => (n.selected ? { ...n, selected: false } : n)));
 
   const newFlow = () => {
-    if (!confirm('새 워크플로를 시작할까요? (저장하지 않은 변경은 사라져요)')) return;
+    if (!confirm(T('confirm.new'))) return;
     setNodes([]);
     setEdges([]);
     setLog([]);
@@ -361,17 +368,24 @@ function Editor() {
     setCurrentId(saved.id);
     setWfName(saved.name);
     refreshWorkflows();
+    // AI 출력이 승인 없이 밖으로 나가는 경로가 있으면 알려 준다 — 실행하면 발송 직전에 자동으로 승인을 묻는다
+    try {
+      const lint = await api.lintWorkflow({ nodes: clean, edges });
+      if (lint?.unguarded?.length) {
+        setLog((prev) => [...prev, ...lint.unguarded.map((u) => ({ kind: 'skip', msg: `⏸ ${u.message}` }))]);
+      }
+    } catch { /* 경고는 저장을 막지 않는다 */ }
     return saved;
   }, [nodes, edges, currentId, wfName, refreshWorkflows]);
 
   const saveToServer = useCallback(async () => {
     try { await persist(active); }
-    catch (e) { setLog([{ kind: 'err', msg: '저장 실패: ' + e.message }]); }
+    catch (e) { setLog([{ kind: 'err', msg: T('log.saveFail') + e.message }]); }
   }, [persist, active]);
 
   // 활성 토글 → 즉시 저장하며 크론/웹훅 등록·해제
   const toggleActive = useCallback(async () => {
-    if (!serverUp) { setLog([{ kind: 'err', msg: '백엔드가 꺼져 있어 활성화할 수 없어요.' }]); return; }
+    if (!serverUp) { setLog([{ kind: 'err', msg: T('log.cannotActivate') }]); return; }
     const next = !active;
     setActive(next);
     try {
@@ -379,17 +393,17 @@ function Editor() {
       const hooks = nodes.filter((n) => n.data.kind === 'webhookTrigger').map((n) => n.data.params.path);
       const schedules = nodes.filter((n) => n.data.kind === 'scheduleTrigger').map((n) => n.data.params.interval);
       if (next) {
-        const msgs = [{ kind: 'info', msg: '워크플로 활성화됨.' }];
-        hooks.forEach((h) => msgs.push({ kind: 'ok', msg: `웹훅 수신 등록: POST /webhook${h}` }));
-        schedules.forEach((s) => msgs.push({ kind: 'ok', msg: `스케줄 등록: ${s}` }));
-        if (!hooks.length && !schedules.length) msgs.push({ kind: 'skip', msg: '웹훅/스케줄 트리거 노드가 없어 자동 실행 등록은 없어요.' });
+        const msgs = [{ kind: 'info', msg: T('log.activated') }];
+        hooks.forEach((h) => msgs.push({ kind: 'ok', msg: `${T('log.webhook')}${h}` }));
+        schedules.forEach((s) => msgs.push({ kind: 'ok', msg: `${T('log.schedule')}${s}` }));
+        if (!hooks.length && !schedules.length) msgs.push({ kind: 'skip', msg: T('log.noTriggers') });
         setLog(msgs);
       } else {
-        setLog([{ kind: 'info', msg: '워크플로 비활성화됨 — 크론/웹훅 등록 해제.' }]);
+        setLog([{ kind: 'info', msg: T('log.deactivated') }]);
       }
     } catch (e) {
       setActive(!next);
-      setLog([{ kind: 'err', msg: '상태 변경 실패: ' + e.message }]);
+      setLog([{ kind: 'err', msg: T('log.toggleFail') + e.message }]);
     }
   }, [active, serverUp, persist, nodes]);
 
@@ -411,16 +425,16 @@ function Editor() {
       setActive(!!wf.active);
       setLog([]);
     } catch (e) {
-      setLog([{ kind: 'err', msg: '불러오기 실패: ' + e.message }]);
+      setLog([{ kind: 'err', msg: T('log.loadFail') + e.message }]);
     }
   }, [setNodes, setEdges]);
 
   const deleteWorkflowById = useCallback(async (id, name) => {
-    if (!confirm(`"${name}" 워크플로를 삭제할까요?`)) return;
+    if (!confirm(T('confirm.delete', { name }))) return;
     try {
       await api.deleteWorkflow(id);
     } catch (e) {
-      setLog([{ kind: 'err', msg: '삭제 실패: ' + e.message }]);
+      setLog([{ kind: 'err', msg: T('log.deleteFail') + e.message }]);
       return;
     }
     if (id === currentId) { setCurrentId(null); }
@@ -454,7 +468,7 @@ function Editor() {
         setEdges((d.edges || []).map((e, i) => ({ ...e, id: e.id || `e_${e.source}_${e.target}_${i}` })));
         setLog([]);
       } catch {
-        alert('올바른 워크플로 파일이 아니에요.');
+        alert(T('alert.badFile'));
       }
     };
     reader.readAsText(file);
@@ -483,39 +497,39 @@ function Editor() {
             <div className="tb-left">
               <input
                 className="tb-name-input"
-                value={wfName}
+                value={displayWfName(wfName, lang)}
                 onChange={(e) => setWfName(e.target.value)}
                 spellCheck={false}
-                title="워크플로 이름"
+                title={t('tb.name')}
               />
               <span className="tb-saved">
                 <span className="tb-dot" style={{ background: currentId ? 'var(--ok)' : 'var(--ink-3)' }} />
-                {currentId ? '저장됨' : '미저장'}
+                {currentId ? t('tb.saved') : t('tb.unsaved')}
               </span>
             </div>
 
             <div className="tb-right">
-              <span className={`tb-server ${serverUp ? 'up' : ''}`} title={serverUp ? '백엔드 연결됨' : '백엔드 꺼짐'}>
-                <span className="tb-server-dot" />{serverUp ? '서버 연결됨' : '서버 꺼짐'}
+              <span className={`tb-server ${serverUp ? 'up' : ''}`} title={serverUp ? t('tb.serverUpTitle') : t('tb.serverDownTitle')}>
+                <span className="tb-server-dot" />{serverUp ? t('tb.serverUp') : t('tb.serverDown')}
               </span>
-              <button className="btn-ghost" onClick={saveToServer} disabled={!serverUp} title={serverUp ? '서버에 저장' : '백엔드가 꺼져 있어요'}>
-                <Icon name="check" size={14} />저장
+              <button className="btn-ghost" onClick={saveToServer} disabled={!serverUp} title={serverUp ? t('tb.saveTitle') : t('tb.backendOff')}>
+                <Icon name="check" size={14} />{t('tb.save')}
               </button>
-              <button className="btn-ghost" onClick={() => fileInput.current?.click()}>불러오기</button>
+              <button className="btn-ghost" onClick={() => fileInput.current?.click()}>{t('tb.load')}</button>
               <input ref={fileInput} type="file" accept=".json" hidden onChange={importFlow} />
-              <button className="btn-ghost" onClick={exportFlow}>내보내기</button>
-              <button className="btn-ghost" onClick={runOnServer} disabled={!serverUp || running} title={serverUp ? '백엔드에서 실행 (AI 노드 실제 호출)' : '백엔드가 꺼져 있어요'}>
-                <Icon name="bolt" size={14} />서버 실행
+              <button className="btn-ghost" onClick={exportFlow}>{t('tb.export')}</button>
+              <button className="btn-ghost" onClick={runOnServer} disabled={!serverUp || running} title={serverUp ? t('tb.runServerTitle') : t('tb.backendOff')}>
+                <Icon name="bolt" size={14} />{t('tb.runServer')}
               </button>
 
               <button
                 className={`tb-active ${active ? 'on' : ''}`}
                 onClick={toggleActive}
                 disabled={!serverUp}
-                title={serverUp ? '활성화 시 웹훅/스케줄이 즉시 등록됩니다' : '백엔드가 꺼져 있어요'}
+                title={serverUp ? t('tb.activeTitle') : t('tb.backendOff')}
               >
                 <span className="tb-active-knob" />
-                <span className="tb-active-label">{active ? '활성' : '비활성'}</span>
+                <span className="tb-active-label">{active ? t('tb.active') : t('tb.inactive')}</span>
               </button>
             </div>
           </header>
@@ -545,14 +559,14 @@ function Editor() {
             </ReactFlow>
 
             {/* 노드 추가 FAB */}
-            <button className="add-fab" title="노드 추가" onClick={() => { closeInspector(); setPanelOpen(true); }}>
+            <button className="add-fab" title={t('canvas.addNode')} onClick={() => { closeInspector(); setPanelOpen(true); }}>
               <Icon name="plus" size={22} stroke={2.2} />
             </button>
 
             {/* 하단 중앙 실행 버튼 */}
             <button className="test-btn" onClick={run} disabled={running}>
               {running ? <span className="spin" /> : <Icon name="play" size={15} />}
-              {running ? '실행 중…' : '워크플로 실행'}
+              {running ? t('canvas.running') : t('canvas.run')}
             </button>
 
             <NodePanel open={panelOpen} onClose={() => setPanelOpen(false)} onAdd={addNode} />

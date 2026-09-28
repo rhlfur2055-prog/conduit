@@ -1,7 +1,7 @@
 // 사람 승인 대기 — 목록 조회 · 결정 (텔레그램 버튼 대신 API 로도 결정할 수 있다)
 import { Router } from 'express';
 import { Approvals } from '../store.js';
-import { decide } from '../approvals.js';
+import { decide, retryResume } from '../approvals.js';
 
 export const approvals = Router();
 
@@ -20,5 +20,10 @@ approvals.get('/approvals/:id', (req, res) => {
 approvals.post('/approvals/:id/decide', async (req, res) => {
   const { decision, editedText } = req.body || {};
   const r = await decide(req.params.id, { decision, editedText, by: 'api' });
+  res.status(r.ok ? 200 : 400).json(r);
+});
+// 재개가 실패한 건을 같은 결정으로 다시 실행 (텔레그램 🔁 버튼과 같다)
+approvals.post('/approvals/:id/retry', async (req, res) => {
+  const r = await retryResume(req.params.id);
   res.status(r.ok ? 200 : 400).json(r);
 });

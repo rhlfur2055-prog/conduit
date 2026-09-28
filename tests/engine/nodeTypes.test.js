@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NODE_TYPES } from '../../src/engine/nodeTypes.js';
+import { NODE_TYPES } from '../../src/engine/nodeTypes.ts';
 
 // 노드 run() 을 직접 호출 — params 는 엔진이 표현식을 해석한 뒤의 값
 const run = (kind, main, params = {}) =>

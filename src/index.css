@@ -428,6 +428,23 @@ button { font-family: inherit; }
 .exec-detail-name { font-weight: 600; font-size: 13.5px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .exec-detail-time { font-size: 11px; color: var(--ink-3); }
 .exec-logs { flex: 1; overflow-y: auto; padding: 12px 16px; font-family: var(--font-mono); font-size: 12px; }
+.exec-dot.waiting { background: var(--accent); }
+.exec-badge.waiting { color: #9a5a44; background: var(--accent-soft); }
+
+/* 실행 추적 — 노드별 상태 · 시도 · 시간 · 주입, 승인과 재개, 격리된 실패 */
+.trace { padding: 8px 16px 10px; border-bottom: 1px solid var(--border); font-size: 12px; max-height: 46%; overflow-y: auto; }
+.trace-h { font-size: 10.5px; font-weight: 700; color: var(--ink-3); letter-spacing: .04em; text-transform: uppercase; margin: 8px 0 4px; }
+.trace-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 3px 0; }
+.trace-row .t-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trace-row .t-name small { color: var(--ink-3); margin-left: 6px; }
+.trace-row .t-num { font-family: var(--font-mono); color: var(--ink-2); font-size: 11px; white-space: nowrap; }
+.trace-tags { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.trace-tag { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 5px; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; }
+.trace-tag.inj { background: #eef3e8; color: var(--ok); }
+.trace-tag.err { background: #f7ece8; color: var(--err); }
+.trace-tag.wait { background: var(--accent-soft); color: #9a5a44; }
+.trace-link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; }
+.trace-err { color: var(--err); font-family: var(--font-mono); font-size: 11px; padding: 0 0 4px 16px; word-break: break-all; }
 
 /* ---------- DLQ 모달 ---------- */
 .dlq-notice {
@@ -530,3 +547,31 @@ button { font-family: inherit; }
 .easy-mode:disabled { opacity: 0.55; cursor: not-allowed; }
 .easy-details { margin-top: 10px; }
 .easy-details summary { cursor: pointer; font-size: 13px; color: var(--muted, #7a6f66); }
+
+/* 실행 기록 — "왜?" (운영 기록 벡터 검색 + 소크라테스식 문답) */
+.why { margin: 8px 0 12px; padding: 10px 12px; border: 1px solid var(--line, #e7ded3); border-radius: 10px; background: var(--panel, #fffaf5); }
+.why-ask { display: flex; gap: 6px; }
+.why-input { flex: 1; min-width: 0; padding: 7px 10px; border: 1px solid var(--line, #e7ded3); border-radius: 8px; font: inherit; font-size: 13px; background: var(--bg, #fff); color: inherit; }
+.why-btn { padding: 7px 14px; border: 0; border-radius: 8px; background: var(--accent, #cc785c); color: #fff; font-weight: 600; cursor: pointer; }
+.why-btn:disabled { opacity: 0.6; cursor: wait; }
+.why-meta { margin-top: 8px; font-size: 12px; color: var(--muted, #7a6f66); }
+.why-sentences { margin: 6px 0; padding-left: 18px; font-size: 13px; line-height: 1.55; }
+.why-qs { margin-top: 6px; display: grid; gap: 8px; }
+.why-q { padding: 8px 10px; border-radius: 8px; background: var(--bg, #fff); border: 1px solid var(--line, #e7ded3); }
+.why-q.refuted { border-color: #e8b4a8; }
+.why-q-head { font-size: 13px; font-weight: 600; }
+.why-a { font-size: 13px; margin: 4px 0; }
+.why-a small { color: #b4533a; }
+.why-ev { font-size: 12px; color: var(--muted, #7a6f66); overflow-wrap: anywhere; }
+.why-ev.refuted { color: #b4533a; }
+.why-sentences.model { color: var(--muted, #7a6f66); }
+.why-meta .trace-link { margin-left: 6px; }
+
+/* 사이드바 — 화면 언어 전환 (한국어 / English) */
+.sb-lang {
+  margin-left: auto; flex-shrink: 0; padding: 4px 9px; border-radius: 999px;
+  border: 1px solid var(--border); background: transparent; color: var(--ink-3);
+  font: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.sb-lang:hover { border-color: var(--accent); color: var(--accent); }
+

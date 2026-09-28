@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { NODE_TYPES } from '../engine/nodeTypes.js';
-import { profileFor } from '../engine/retry.js';
+import { NODE_TYPES } from '../engine/nodeTypes.ts';
+import { profileFor } from '../engine/retry.ts';
 import { Icon } from '../ui/icons.jsx';
+import { useLang, tr, nodeTitle, fieldLabel } from '../i18n.js';
 
 function pickOutput(output) {
   if (!output) return undefined;
@@ -11,6 +12,8 @@ function pickOutput(output) {
 // 노드 선택 시 우측에서 열리는 파라미터 + 데이터(NDV) 패널
 export default function Inspector({ node, onChange, onDelete, onClose }) {
   const [tab, setTab] = useState('params');
+  const lang = useLang();
+  const t = (k, v) => tr(lang, k, v);
   if (!node) return null;
 
   const def = NODE_TYPES[node.data.kind];
@@ -29,7 +32,7 @@ export default function Inspector({ node, onChange, onDelete, onClose }) {
           <span className="insp-icon" style={{ '--c': def.color }}>
             <Icon name={def.icon} size={16} />
           </span>
-          {def.title}
+          {nodeTitle(node.data.kind, lang)}
         </span>
         <button className="insp-close" onClick={onClose}>
           <Icon name="close" size={16} />
@@ -37,9 +40,9 @@ export default function Inspector({ node, onChange, onDelete, onClose }) {
       </div>
 
       <div className="insp-tabs">
-        <button className={tab === 'params' ? 'on' : ''} onClick={() => setTab('params')}>설정</button>
-        <button className={tab === 'input' ? 'on' : ''} onClick={() => setTab('input')}>입력</button>
-        <button className={tab === 'output' ? 'on' : ''} onClick={() => setTab('output')}>출력</button>
+        <button className={tab === 'params' ? 'on' : ''} onClick={() => setTab('params')}>{t('insp.params')}</button>
+        <button className={tab === 'input' ? 'on' : ''} onClick={() => setTab('input')}>{t('insp.input')}</button>
+        <button className={tab === 'output' ? 'on' : ''} onClick={() => setTab('output')}>{t('insp.output')}</button>
       </div>
 
       <div className="insp-body">
@@ -47,12 +50,12 @@ export default function Inspector({ node, onChange, onDelete, onClose }) {
           <>
             {def.backend && (
               <div className="insp-banner">
-                <Icon name="bolt" size={14} />이 노드의 실제 연동은 백엔드 서버가 필요해요. 지금은 시뮬레이션 결과를 냅니다.
+                <Icon name="bolt" size={14} />{t('insp.backend')}
               </div>
             )}
             {def.fields.map((f) => (
               <div className="fld" key={f.key}>
-                <label>{f.label}</label>
+                <label>{fieldLabel(node.data.kind, f, lang)}</label>
                 {f.type === 'textarea' && (
                   <textarea value={params[f.key] ?? ''} onChange={(e) => update(f.key, e.target.value)} spellCheck={false} />
                 )}
@@ -66,31 +69,31 @@ export default function Inspector({ node, onChange, onDelete, onClose }) {
                 )}
               </div>
             ))}
-            {def.fields.length === 0 && <div className="insp-note">설정할 항목이 없는 노드예요.</div>}
-            <div className="insp-hint">💡 값에 <code>{'{{ $json.필드 }}'}</code> 를 쓰면 이전 노드 데이터를 참조해요.</div>
+            {def.fields.length === 0 && <div className="insp-note">{t('insp.noFields')}</div>}
+            <div className="insp-hint">{t('insp.hintPre')}<code>{`{{ $json.${t('insp.hintField')} }}`}</code>{t('insp.hintPost')}</div>
 
-            <div className="insp-sub-head">배치 처리</div>
+            <div className="insp-sub-head">{t('insp.batch')}</div>
             <div className="fld">
-              <label>배치 크기 (0=순차 · N=한 번에 N개 병렬)</label>
+              <label>{t('insp.batchSize')}</label>
               <select value={params._batchSize ?? ''} onChange={(e) => update('_batchSize', e.target.value)}>
-                <option value="">순차 (기본)</option>
-                {[2, 5, 10, 20, 50].map((v) => (<option key={v} value={v}>{v}개씩 병렬</option>))}
+                <option value="">{t('insp.sequential')}</option>
+                {[2, 5, 10, 20, 50].map((v) => (<option key={v} value={v}>{t('insp.parallel', { n: v })}</option>))}
               </select>
             </div>
             <div className="fld">
-              <label>배치 간 지연 (ms · rate limit 대응)</label>
+              <label>{t('insp.batchDelay')}</label>
               <select value={params._batchDelayMs ?? ''} onChange={(e) => update('_batchDelayMs', e.target.value)}>
-                <option value="">없음</option>
+                <option value="">{t('insp.none')}</option>
                 {[200, 350, 500, 1000, 1500].map((v) => (<option key={v} value={v}>{v}ms</option>))}
               </select>
             </div>
 
-            <div className="insp-sub-head">안정성</div>
+            <div className="insp-sub-head">{t('insp.reliability')}</div>
             <div className="fld">
-              <label>재시도 횟수 (비우면 노드 기본값: {profile.maxRetries}회)</label>
+              <label>{t('insp.retries', { n: profile.maxRetries })}</label>
               <select value={params._retries ?? ''} onChange={(e) => update('_retries', e.target.value)}>
-                <option value="">기본값 ({profile.maxRetries}회)</option>
-                {[0, 1, 2, 3, 5, 8].map((v) => (<option key={v} value={v}>{v}회</option>))}
+                <option value="">{t('insp.retriesDefault', { n: profile.maxRetries })}</option>
+                {[0, 1, 2, 3, 5, 8].map((v) => (<option key={v} value={v}>{t('insp.times', { n: v })}</option>))}
               </select>
             </div>
             <label className="insp-check">
@@ -99,30 +102,27 @@ export default function Inspector({ node, onChange, onDelete, onClose }) {
                 checked={params._continueOnFail === true || params._continueOnFail === 'true'}
                 onChange={(e) => update('_continueOnFail', e.target.checked)}
               />
-              실패해도 계속 진행 (Continue On Fail)
+              {t('insp.continueOnFail')}
             </label>
-            <div className="insp-hint">
-              일시 오류(429·5xx·네트워크)만 재시도하고, 영구 오류(400·401·404)는 즉시 실패합니다.
-              실패 항목은 DLQ에 격리돼요.
-            </div>
+            <div className="insp-hint">{t('insp.retryNote')}</div>
           </>
         )}
 
         {tab === 'input' && (
-          <DataView data={inputData} empty="아직 입력 데이터가 없어요. 워크플로를 실행해 보세요." />
+          <DataView data={inputData} empty={t('insp.noInput')} />
         )}
         {tab === 'output' && (() => {
           // 에이전트 노드: 첫 아이템에 toolCalls 가 있으면 타임라인 뷰
           const first = Array.isArray(outputData) ? outputData[0] : outputData;
           return first && Array.isArray(first.toolCalls)
             ? <AgentTimeline result={first} />
-            : <DataView data={outputData} empty="아직 출력 데이터가 없어요. 워크플로를 실행해 보세요." />;
+            : <DataView data={outputData} empty={t('insp.noOutput')} />;
         })()}
       </div>
 
       <div className="insp-foot">
         <button className="btn-ghost danger" onClick={() => onDelete(node.id)}>
-          <Icon name="trash" size={15} />노드 삭제
+          <Icon name="trash" size={15} />{t('insp.deleteNode')}
         </button>
       </div>
     </div>
@@ -130,20 +130,21 @@ export default function Inspector({ node, onChange, onDelete, onClose }) {
 }
 
 function DataView({ data, empty }) {
+  const lang = useLang();
   if (data === undefined) return <div className="insp-note">{empty}</div>;
 
   // 아이템 배열이면 n8n 처럼 아이템 단위로 보여준다
   if (Array.isArray(data)) {
     return (
       <div>
-        <div className="ndv-count">{data.length} item{data.length !== 1 ? 's' : ''}</div>
+        <div className="ndv-count">{tr(lang, 'node.items', { n: data.length, s: data.length !== 1 ? 's' : '' })}</div>
         {data.slice(0, 30).map((item, i) => (
           <div className="ndv-item" key={i}>
-            <div className="ndv-item-head">아이템 {i + 1}</div>
+            <div className="ndv-item-head">{tr(lang, 'insp.item', { n: i + 1 })}</div>
             <pre className="insp-out">{JSON.stringify(item, null, 2)}</pre>
           </div>
         ))}
-        {data.length > 30 && <div className="insp-note">… 외 {data.length - 30}건</div>}
+        {data.length > 30 && <div className="insp-note">{tr(lang, 'insp.more', { n: data.length - 30 })}</div>}
       </div>
     );
   }
@@ -151,24 +152,25 @@ function DataView({ data, empty }) {
 }
 
 const TOOL_META = {
-  run_code: { c: '#9c5f7d', label: '코드 실행' },
-  http_get: { c: '#5f7fa3', label: 'HTTP GET' },
-  http_auth: { c: '#5f7fa3', label: 'HTTP 인증' },
-  youtube_search: { c: '#ff0000', label: 'YouTube 검색' },
-  naver_search: { c: '#03c75a', label: 'Naver 검색' },
-  slack_post: { c: '#611f69', label: 'Slack 전송' },
-  notion_create: { c: '#111111', label: 'Notion 생성' },
-  run_workflow: { c: '#cc785c', label: '서브워크플로 실행' },
-  mcp_list_tools: { c: '#7c5cbf', label: 'MCP 도구 목록' },
-  mcp_call: { c: '#7c5cbf', label: 'MCP 도구 호출' },
+  run_code: { c: '#9c5f7d', label: '코드 실행', en: 'Run code' },
+  http_get: { c: '#5f7fa3', label: 'HTTP GET', en: 'HTTP GET' },
+  http_auth: { c: '#5f7fa3', label: 'HTTP 인증', en: 'HTTP (auth)' },
+  youtube_search: { c: '#ff0000', label: 'YouTube 검색', en: 'YouTube search' },
+  naver_search: { c: '#03c75a', label: 'Naver 검색', en: 'Naver search' },
+  slack_post: { c: '#611f69', label: 'Slack 전송', en: 'Slack post' },
+  notion_create: { c: '#111111', label: 'Notion 생성', en: 'Notion create' },
+  run_workflow: { c: '#cc785c', label: '서브워크플로 실행', en: 'Run sub-workflow' },
+  mcp_list_tools: { c: '#7c5cbf', label: 'MCP 도구 목록', en: 'MCP tool list' },
+  mcp_call: { c: '#7c5cbf', label: 'MCP 도구 호출', en: 'MCP tool call' },
 };
 
 function AgentTimeline({ result }) {
+  const lang = useLang();
   const calls = result.toolCalls || [];
   return (
     <div className="tl">
       {calls.length === 0 && (
-        <div className="insp-note">이번 실행에서 도구 호출이 없었어요. (모델이 바로 답했거나 시뮬레이션 모드)</div>
+        <div className="insp-note">{tr(lang, 'insp.noTools')}</div>
       )}
 
       {calls.length > 0 && (
@@ -181,17 +183,17 @@ function AgentTimeline({ result }) {
                 <div className="tl-card">
                   <div className="tl-tool">
                     <span className="tl-tool-chip" style={{ background: meta.c }} />
-                    {meta.label}
+                    {lang === 'en' && meta.en ? meta.en : meta.label}
                     <span className="tl-tool-name">{c.tool}</span>
                   </div>
                   {c.input !== undefined && (
                     <div className="tl-io">
-                      <span className="tl-io-k">입력</span>
+                      <span className="tl-io-k">{tr(lang, 'insp.toolIn')}</span>
                       <code>{typeof c.input === 'object' ? JSON.stringify(c.input) : String(c.input)}</code>
                     </div>
                   )}
                   <div className="tl-io">
-                    <span className="tl-io-k">결과</span>
+                    <span className="tl-io-k">{tr(lang, 'insp.toolOut')}</span>
                     <code className="tl-out">{String(c.output ?? '')}</code>
                   </div>
                 </div>
@@ -203,13 +205,13 @@ function AgentTimeline({ result }) {
 
       {result.agentResult && (
         <div className="tl-final">
-          <div className="tl-final-label">최종 답변</div>
+          <div className="tl-final-label">{tr(lang, 'insp.final')}</div>
           <div className="tl-final-text">{result.agentResult}</div>
         </div>
       )}
 
       <details className="tl-raw">
-        <summary>원본 데이터 (JSON)</summary>
+        <summary>{tr(lang, 'insp.raw')}</summary>
         <pre className="insp-out">{JSON.stringify(result, null, 2)}</pre>
       </details>
     </div>

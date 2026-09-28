@@ -1,8 +1,9 @@
 import { memo, useContext } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { NODE_TYPES, itemCount } from '../engine/nodeTypes.js';
+import { NODE_TYPES, itemCount } from '../engine/nodeTypes.ts';
 import { FlowActions } from '../flowActions.js';
 import { Icon } from '../ui/icons.jsx';
+import { useLang, tr, nodeTitle } from '../i18n.js';
 
 // 노드 박스 높이(핸들 수직 중심 계산에 사용)
 const BOX_H = 62;
@@ -10,7 +11,9 @@ const BOX_H = 62;
 function FlowNode({ id, data, selected }) {
   const def = NODE_TYPES[data.kind];
   const actions = useContext(FlowActions);
+  const lang = useLang();
   if (!def) return null;
+  const t = (k, v) => tr(lang, k, v);
 
   const isTrigger = def.inputs.length === 0;
   const count = data.status === 'done' ? itemCount(data.result?.output) : null;
@@ -19,13 +22,13 @@ function FlowNode({ id, data, selected }) {
     <div className="nd-wrap">
       {/* 호버 툴바 */}
       <div className="nd-toolbar" onMouseDown={(e) => e.stopPropagation()}>
-        <button title="실행" onClick={() => actions.run()}>
+        <button title={t('node.run')} onClick={() => actions.run()}>
           <Icon name="play" size={13} />
         </button>
-        <button title="복제" onClick={() => actions.duplicate(id)}>
+        <button title={t('node.duplicate')} onClick={() => actions.duplicate(id)}>
           <Icon name="copy" size={13} />
         </button>
-        <button title="삭제" onClick={() => actions.remove(id)}>
+        <button title={t('node.delete')} onClick={() => actions.remove(id)}>
           <Icon name="trash" size={13} />
         </button>
       </div>
@@ -67,9 +70,9 @@ function FlowNode({ id, data, selected }) {
           </span>
         )}
         {data.status === 'error' && <span className="nd-badge err">!</span>}
-        {data.status === 'failedContinue' && <span className="nd-badge warn" title="실패했지만 계속 진행">!</span>}
-        {data.status === 'retrying' && <span className="nd-badge warn" title="재시도 중">↻</span>}
-        {data.status === 'waiting' && <span className="nd-badge warn" title="사람 승인 대기 중">⏸</span>}
+        {data.status === 'failedContinue' && <span className="nd-badge warn" title={t('node.failedContinue')}>!</span>}
+        {data.status === 'retrying' && <span className="nd-badge warn" title={t('node.retrying')}>↻</span>}
+        {data.status === 'waiting' && <span className="nd-badge warn" title={t('node.waiting')}>⏸</span>}
         {data.status === 'running' && <span className="nd-badge run" />}
       </div>
 
@@ -82,12 +85,12 @@ function FlowNode({ id, data, selected }) {
         ))}
 
       {/* 노드 이름 (박스 아래) */}
-      <div className="nd-name">{def.title}</div>
+      <div className="nd-name">{nodeTitle(data.kind, lang)}</div>
       {/* 실행 중 라이브 진행 카운터, 완료 후엔 아이템 수 */}
       {data.progress && (data.status === 'running' || data.status === 'retrying') ? (
         <div className="nd-count live">{data.progress.done}/{data.progress.total}</div>
       ) : (
-        count > 0 && <div className="nd-count">{count} item{count > 1 ? 's' : ''}</div>
+        count > 0 && <div className="nd-count">{t('node.items', { n: count, s: count > 1 ? 's' : '' })}</div>
       )}
     </div>
   );

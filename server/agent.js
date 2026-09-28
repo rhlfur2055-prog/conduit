@@ -6,7 +6,7 @@
 import { getApiKey, getProvider } from './llm.js';
 import * as integrations from './integrations.js';
 import { Workflows } from './store.js';
-import { runFlow } from '../src/engine/executor.js';
+import { runFlow } from '../src/engine/executor.ts';
 import { mcpListTools, mcpCallTool } from './mcp.js';
 import { codeExecutionAllowed, currentPolicy } from './policy.js';
 

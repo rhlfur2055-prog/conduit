@@ -19,6 +19,7 @@ import { closeOcr } from './vision.js';
 import { startHeartbeat, runHeartbeat } from './heartbeat.js';
 import { startTelegram, telegramMode } from './telegramChannel.js';
 import { applyHeartbeatSetting } from './quickstart.js';
+import { ensureInlineWorker, workerMode, Jobs } from './queue.js';
 
 // 직접 실행(node server/index.js)인지, 테스트 등에서 import 했는지
 const isMain = !!process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -42,6 +43,10 @@ if (isMain) {
       : '  인증: 키 미설정 — 이 컴퓨터(127.0.0.1)에서 온 요청만 허용. 외부에 열려면 CONDUIT_API_KEY 를 설정하세요.');
     console.log(`  코드 실행: ${codeExecutionAllowed() ? '켜짐' : '꺼짐 (CONDUIT_ALLOW_CODE)'}`);
     registerAll();
+    // 작업 큐 — 웹훅·크론은 큐에 들어가고 워커가 돈다. 기본은 이 프로세스 안의 워커, CONDUIT_WORKER=off 면 별도 워커(node server/worker.js)
+    const q = Jobs.counts();
+    if (workerMode() === 'inline') { ensureInlineWorker(); console.log(`  작업 큐: 이 프로세스 안 워커 · 대기 ${q.queued || 0} · 실행 중 ${q.running || 0}`); }
+    else console.log(`  작업 큐: 별도 워커 (node server/worker.js) · 대기 ${q.queued || 0} · 실행 중 ${q.running || 0}`);
     await recoverAtBoot().catch((e) => console.warn('[approval] 기동 정리 실패:', e.message));
     // 텔레그램 — 승인 버튼 + 휴대폰↔PC 주고받기 (롱폴링, 공개 URL 불필요). 토큰은 .env 또는 쉬운 시작 화면
     if (await startTelegram({ onReceived: () => runHeartbeat() })) {

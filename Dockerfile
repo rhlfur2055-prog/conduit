@@ -5,7 +5,7 @@
 # ============================================================
 
 # ---------- stage 1: 프론트엔드 빌드 ----------
-FROM node:22-alpine AS frontend
+FROM node:24-alpine AS frontend
 WORKDIR /app
 
 COPY package*.json ./
@@ -17,7 +17,7 @@ RUN npm run build
 
 
 # ---------- stage 2: 런타임 ----------
-FROM node:22-alpine AS runtime
+FROM node:24-alpine AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production

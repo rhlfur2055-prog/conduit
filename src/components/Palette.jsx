@@ -1,4 +1,4 @@
-import { NODE_TYPES, PALETTE_GROUPS } from '../engine/nodeTypes.js';
+import { NODE_TYPES, PALETTE_GROUPS } from '../engine/nodeTypes.ts';
 
 // 왼쪽 노드 팔레트. 클릭 또는 캔버스로 드래그하여 노드 추가.
 export default function Palette({ onAdd }) {

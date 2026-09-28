@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { runFlow } from '../../src/engine/executor.js';
-import { NODE_TYPES } from '../../src/engine/nodeTypes.js';
+import { runFlow } from '../../src/engine/executor.ts';
+import { NODE_TYPES } from '../../src/engine/nodeTypes.ts';
 
 // ---- 워크플로 조립 헬퍼 ----
 const node = (id, kind, params = {}) => ({

@@ -17,7 +17,7 @@ const ch = await import('../../server/telegramChannel.js');
 const { remember, recall } = await import('../../server/memory/memory.js');
 const { senseInbox } = await import('../../server/heartbeat.js');
 const { Workflows, Settings, People, Goals } = await import('../../server/store.js');
-const { NODE_TYPES } = await import('../../src/engine/nodeTypes.js');
+const { NODE_TYPES } = await import('../../src/engine/nodeTypes.ts');
 
 const registrar = () => {};
 const sent = [];

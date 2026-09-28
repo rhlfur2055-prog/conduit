@@ -21,7 +21,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await new Promise((r) => server.close(r));
-  fs.rmSync(dataDir, { recursive: true, force: true });
+  try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch { /* 윈도우: 아직 잡힌 DB 핸들 */ }
 });
 beforeEach(() => {
   process.env.CONDUIT_API_KEY = KEY;

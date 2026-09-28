@@ -6,8 +6,10 @@
 //     2) 실행이 끝난 뒤: runtime.execute() 가 "끝난 노드 전부"의 출력을 스냅샷으로 넘기며 finalizeApproval() 을 부른다.
 //        그때 메시지를 보내고 'pending' 이 된다. → 실행이 끝나기 전에 버튼을 누를 수 없고, 재개 때 어떤 노드도 두 번 돌지 않는다.
 //   재개: 스냅샷을 seed 로 주입해 같은 워크플로를 다시 실행 → approved/rejected/expired 포트 하나로만 흐른다.
-//   결정은 멱등(두 번 눌러도 한 번만). 재개가 실패하면 사람에게 "승인됐지만 실행 실패"를 알리고 🔁 다시 시도 버튼을 남긴다.
-//   서버가 재시작돼도 대기 건은 파일에 남는다. 재개 도중 죽은 건은 기동 시 찾아 다시 시도하라고 알린다.
+//   결정은 멱등(두 번 눌러도 한 번만) — SQLite 의 UPDATE … WHERE status='pending' 한 문장이 잡는다(Approvals.claimDecision).
+//   같은 문장에서 재개 시작(resuming)까지 기록하므로, "결정됨" 과 "재개 시작" 사이에 죽어도 기동 정리가 잡아낸다.
+//   재개가 실패하면 사람에게 "승인됐지만 실행 실패"를 알리고 🔁 다시 시도 버튼을 남긴다.
+//   서버가 재시작돼도 대기 건은 SQLite 에 남는다. 재개 도중 죽은 건은 기동 시 찾아 다시 시도하라고 알린다 (tests/server/crash.test.js).
 // ============================================================
 import { Approvals } from './store.js';
 import { execute } from './runtime.js';
@@ -36,7 +38,7 @@ const STATUS = Object.freeze({ approve: 'approved', reject: 'rejected', expired:
 const nowISO = () => new Date().toISOString();
 
 /** 승인 노드(run)에서 호출 — 기록만 만들고 { waiting } 을 돌려준다. 메시지는 finalizeApproval 이 보낸다. */
-export async function requestApproval({ channel = 'telegram', chatId, title, text, remindAfterMin, expireAfterMin, item, _ctx = {} }) {
+export async function requestApproval({ channel = 'telegram', chatId, title, text, remindAfterMin, expireAfterMin, item, gate = 'node', _ctx = {} }) {
   const ad = adapters[channel];
   if (!ad) return { error: `지원하지 않는 승인 채널: ${channel}` };
   if (!ad.ready()) return { error: `${channel} 승인 채널이 설정되지 않았습니다 (TELEGRAM_BOT_TOKEN)` };
@@ -54,6 +56,8 @@ export async function requestApproval({ channel = 'telegram', chatId, title, tex
     channel, chatId: String(chat), title: String(title || '승인 요청'), text: String(text ?? ''), item: item ?? {},
     nodeId, workflowId: meta.workflowId ?? null, workflowName: meta.workflowName ?? null, trigger: meta.trigger ?? null,
     flow: { nodes: flow.nodes, edges: flow.edges }, snapshot: {},
+    gate: gate === 'auto' ? 'auto' : 'node',
+    executionId: meta.executionId ?? null,
     remindAt: new Date(now + remind * 60000).toISOString(),
     expireAt: new Date(now + expire * 60000).toISOString(),
     resumeStatus: null,
@@ -85,14 +89,18 @@ const firstError = (statuses = {}) => Object.values(statuses).find((s) => s.stat
 /** 스냅샷 + 결정을 seed 로 주입해 같은 워크플로를 다시 실행 */
 async function resume(rec, { decision, editedText, by, at }) {
   const approval = { id: rec.id, decision, text: editedText || rec.text, edited: !!editedText, by, at, requestedAt: rec.createdAt };
-  const seed = { ...(rec.snapshot || {}), [rec.nodeId]: { [PORT[decision]]: [{ ...(rec.item || {}), approval }] } };
-  Approvals.update(rec.id, { resumeStatus: 'resuming', resumeStartedAt: nowISO() });
+  // 승인 노드: 결정 포트로 아이템을 주입한다. 자동 게이트: 발송 노드 자체를 승인(실행)하거나 거절(건너뜀)한다.
+  const auto = rec.gate === 'auto';
+  const seed = auto
+    ? { ...(rec.snapshot || {}) }
+    : { ...(rec.snapshot || {}), [rec.nodeId]: { [PORT[decision]]: [{ ...(rec.item || {}), approval }] } };
+  const gates = auto ? (decision === 'approve' ? { approved: { [rec.nodeId]: approval } } : { rejected: { [rec.nodeId]: approval } }) : {};
   let result = null;
   let error = null;
   try {
     result = await execute(
       { id: rec.workflowId, name: rec.workflowName || '(승인 재개)', nodes: rec.flow.nodes, edges: rec.flow.edges },
-      { seed, trigger: 'approval' },
+      { seed, trigger: 'approval', gates },
     );
   } catch (e) {
     error = e.message;
@@ -133,7 +141,11 @@ export async function decide(approvalId, { decision, editedText, by = 'unknown',
 
   const at = nowISO();
   const status = STATUS[decision];
-  Approvals.update(rec.id, { status, decision, editedText: editedText || null, by, decidedAt: at });
+  // 원자적 compare-and-set: pending 인 동안 한 번만 성공한다. 두 번 눌리거나 두 프로세스가 동시에 눌러도 하나만 재개한다.
+  if (!Approvals.claimDecision(rec.id, { status, decision, editedText: editedText || null, by, decidedAt: at })) {
+    const cur = Approvals.get(rec.id);
+    return { ok: true, already: true, status: cur.status, resumeStatus: cur.resumeStatus };
+  }
   const r = await resume(Approvals.get(rec.id), { decision, editedText, by, at });
   await notifyDecided(rec, { decision, by, editedText }, r);
   return { ok: true, status, executionId: r.executionId, resumeStatus: r.ok ? 'done' : 'error', resumeError: r.error };
@@ -148,6 +160,7 @@ export async function retryResume(approvalId, { fromChatId } = {}) {
   if (rec.resumeStatus === 'done') return { ok: true, already: true, status: rec.status, resumeStatus: 'done' };
   if (rec.resumeStatus === 'resuming') return { ok: false, error: '지금 실행 중입니다' };
   if (!rec.flow || !rec.snapshot || !rec.decision) return { ok: false, error: '재실행 데이터가 없습니다' };
+  if (!Approvals.claimResume(rec.id)) return { ok: false, error: '지금 실행 중입니다' };   // 동시에 두 번 눌려도 하나만
   const r = await resume(rec, { decision: rec.decision, editedText: rec.editedText, by: rec.by, at: rec.decidedAt });
   await notifyDecided(rec, { decision: rec.decision, by: rec.by, editedText: rec.editedText }, r);
   return { ok: true, status: rec.status, executionId: r.executionId, resumeStatus: r.ok ? 'done' : 'error', resumeError: r.error };

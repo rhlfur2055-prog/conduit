@@ -1,0 +1,20 @@
+{
+  // 엔진 코어(src/engine)만 TypeScript. 서버·화면은 JavaScript 그대로 두고 여기서 타입만 가져다 쓴다.
+  // erasableSyntaxOnly: Node 24 가 빌드 없이 .ts 를 직접 실행(타입만 벗김)할 수 있는 문법만 허용한다.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "isolatedModules": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx"
+  },
+  "include": ["src/engine/**/*.ts"]
+}

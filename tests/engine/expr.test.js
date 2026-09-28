@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { evalExpr, resolveString, resolveParams, hasExpression } from '../../src/engine/expr.js';
+import { evalExpr, resolveString, resolveParams, hasExpression } from '../../src/engine/expr.ts';
 
 const ctx = {
   $json: { name: '동근', count: 3, tags: ['a', 'b'], nested: { v: 1 } },

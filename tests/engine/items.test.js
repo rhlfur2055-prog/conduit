@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toItems, emptyToUndefined, firstItem, countItems, chunk, getPath, stableKey } from '../../src/engine/items.js';
+import { toItems, emptyToUndefined, firstItem, countItems, chunk, getPath, stableKey } from '../../src/engine/items.ts';
 
 describe('toItems — 모든 값을 아이템 배열로 정규화', () => {
   it('undefined/null 은 빈 배열', () => {

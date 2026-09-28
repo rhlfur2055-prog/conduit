@@ -1,18 +1,21 @@
 import { Icon } from '../ui/icons.jsx';
+import { useLang, setLang, tr, displayWfName } from '../i18n.js';
 
 const NAV = [
-  { key: 'easy', label: '쉬운 시작', icon: 'spark' },
-  { key: 'workflows', label: '워크플로', icon: 'flow', active: true },
-  { key: 'executions', label: '실행 기록', icon: 'list' },
-  { key: 'dlq', label: '실패 큐 (DLQ)', icon: 'close' },
-  { key: 'credentials', label: '자격 증명', icon: 'key' },
-  { key: 'settings', label: '설정', icon: 'sliders' },
+  { key: 'easy', label: 'nav.easy', icon: 'spark' },
+  { key: 'workflows', label: 'nav.workflows', icon: 'flow', active: true },
+  { key: 'executions', label: 'nav.executions', icon: 'list' },
+  { key: 'dlq', label: 'nav.dlq', icon: 'close' },
+  { key: 'credentials', label: 'nav.credentials', icon: 'key' },
+  { key: 'settings', label: 'nav.settings', icon: 'sliders' },
 ];
 
 export default function Sidebar({
   email, onNew, onOpenCredentials, onOpenExecutions, onOpenDlq, onOpenSettings, onOpenEasy,
   workflows = [], currentId, onSelectWorkflow, onDeleteWorkflow,
 }) {
+  const lang = useLang();
+  const t = (k, v) => tr(lang, k, v);
   const handle = (email || 'user@flowforge').split('@')[0];
   const initial = handle.charAt(0).toUpperCase();
   const handlers = { easy: onOpenEasy, credentials: onOpenCredentials, executions: onOpenExecutions, dlq: onOpenDlq, settings: onOpenSettings };
@@ -27,21 +30,21 @@ export default function Sidebar({
       </div>
 
       <button className="sb-new" onClick={onNew}>
-        <Icon name="plus" size={16} />새 워크플로
+        <Icon name="plus" size={16} />{t('sb.new')}
       </button>
 
       <nav className="sb-nav">
         {NAV.map((n) => (
           <a key={n.key} className={`sb-nav-item ${n.active ? 'active' : ''}`} onClick={handlers[n.key]}>
             <Icon name={n.icon} size={17} />
-            {n.label}
+            {t(n.label)}
           </a>
         ))}
       </nav>
 
-      <div className="sb-section">저장된 워크플로</div>
+      <div className="sb-section">{t('sb.saved')}</div>
       <div className="sb-recent">
-        {workflows.length === 0 && <div className="sb-empty">아직 없어요. 상단 저장을 눌러보세요.</div>}
+        {workflows.length === 0 && <div className="sb-empty">{t('sb.empty')}</div>}
         {workflows.map((w) => (
           <div
             key={w.id}
@@ -49,11 +52,11 @@ export default function Sidebar({
             onClick={() => onSelectWorkflow?.(w.id)}
           >
             <span className="sb-recent-dot" />
-            <span className="sb-recent-name">{w.name}</span>
-            {w.active && <span className="sb-recent-badge" title="활성">●</span>}
+            <span className="sb-recent-name">{displayWfName(w.name, lang)}</span>
+            {w.active && <span className="sb-recent-badge" title={t('sb.active')}>●</span>}
             <button
               className="sb-recent-del"
-              title="삭제"
+              title={t('sb.delete')}
               onClick={(e) => { e.stopPropagation(); onDeleteWorkflow?.(w.id, w.name); }}
             >
               <Icon name="trash" size={13} />
@@ -66,8 +69,17 @@ export default function Sidebar({
         <span className="sb-avatar">{initial}</span>
         <div className="sb-user-meta">
           <span className="sb-user-name">{handle}</span>
-          <span className="sb-user-plan">Free 플랜</span>
+          <span className="sb-user-plan">{t('sb.plan')}</span>
         </div>
+        {/* 화면 언어 — 쉬운 시작 화면과 같은 설정을 쓴다 */}
+        <button
+          className="sb-lang"
+          onClick={() => setLang(lang === 'en' ? 'ko' : 'en')}
+          title={lang === 'en' ? '한국어로 보기' : 'Switch to English'}
+          aria-label={lang === 'en' ? '한국어로 보기' : 'Switch to English'}
+        >
+          {t('lang.toggle')}
+        </button>
       </div>
     </aside>
   );

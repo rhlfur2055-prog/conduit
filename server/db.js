@@ -90,6 +90,23 @@ CREATE TABLE IF NOT EXISTS executions (
   statuses      TEXT                -- JSON (노드별 status · attempts · ms · injected · error)
 );
 CREATE INDEX IF NOT EXISTS executions_wf ON executions (workflow_id, at DESC);
+
+-- "왜 이 행동이 일어났나" 벡터 색인 (server/why.js) — 원본 기록 하나 = 행 하나.
+-- 문장은 코드가 기록에서 만들고, 벡터는 로컬 임베더가 만든다. hash 가 같으면 다시 임베딩하지 않는다.
+CREATE TABLE IF NOT EXISTS why_index (
+  ref          TEXT PRIMARY KEY,        -- 'execution:ex_…' | 'approval:ap_…' | 'dlq:dlq_…'
+  source       TEXT NOT NULL CHECK (source IN ('execution','approval','dlq')),
+  source_id    TEXT NOT NULL,
+  execution_id TEXT,
+  at           TEXT,
+  text         TEXT NOT NULL,           -- 사실 문장들 (줄바꿈으로 이음)
+  hash         TEXT NOT NULL,           -- sha1(모델 + 문장) — 바뀐 것만 다시 임베딩
+  model        TEXT,                    -- 임베딩 모델 (없으면 NULL = 글자 겹침으로만 찾음)
+  dim          INTEGER,
+  vec          BLOB,                    -- Float32 리틀엔디언
+  indexed_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS why_index_exec ON why_index (execution_id);
 `;
 
 /** 데이터 폴더의 conduit.db 를 연다(없으면 만든다). 스키마는 멱등하게 만들고, 기존 JSON 기록이 있으면 옮긴다. */

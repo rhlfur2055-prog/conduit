@@ -547,3 +547,22 @@ button { font-family: inherit; }
 .easy-mode:disabled { opacity: 0.55; cursor: not-allowed; }
 .easy-details { margin-top: 10px; }
 .easy-details summary { cursor: pointer; font-size: 13px; color: var(--muted, #7a6f66); }
+
+/* 실행 기록 — "왜?" (운영 기록 벡터 검색 + 소크라테스식 문답) */
+.why { margin: 8px 0 12px; padding: 10px 12px; border: 1px solid var(--line, #e7ded3); border-radius: 10px; background: var(--panel, #fffaf5); }
+.why-ask { display: flex; gap: 6px; }
+.why-input { flex: 1; min-width: 0; padding: 7px 10px; border: 1px solid var(--line, #e7ded3); border-radius: 8px; font: inherit; font-size: 13px; background: var(--bg, #fff); color: inherit; }
+.why-btn { padding: 7px 14px; border: 0; border-radius: 8px; background: var(--accent, #cc785c); color: #fff; font-weight: 600; cursor: pointer; }
+.why-btn:disabled { opacity: 0.6; cursor: wait; }
+.why-meta { margin-top: 8px; font-size: 12px; color: var(--muted, #7a6f66); }
+.why-sentences { margin: 6px 0; padding-left: 18px; font-size: 13px; line-height: 1.55; }
+.why-qs { margin-top: 6px; display: grid; gap: 8px; }
+.why-q { padding: 8px 10px; border-radius: 8px; background: var(--bg, #fff); border: 1px solid var(--line, #e7ded3); }
+.why-q.refuted { border-color: #e8b4a8; }
+.why-q-head { font-size: 13px; font-weight: 600; }
+.why-a { font-size: 13px; margin: 4px 0; }
+.why-a small { color: #b4533a; }
+.why-ev { font-size: 12px; color: var(--muted, #7a6f66); overflow-wrap: anywhere; }
+.why-ev.refuted { color: #b4533a; }
+.why-sentences.model { color: var(--muted, #7a6f66); }
+.why-meta .trace-link { margin-left: 6px; }

@@ -96,6 +96,82 @@ function Trace({ trace, onJump }) {
   );
 }
 
+const Q_STATUS = { verified: '검증됨', refuted: '반박됨', unanswerable: '기록에 없음' };
+const REFUTE = { fabricated: '인용 위조', paraphrased: '의역', unsupported_value: '인용에 없는 값', no_evidence: '근거 없음', instruction_quote: '숨은 지시 인용', too_short: '인용이 너무 짧음', status_contradiction: '인용한 줄의 상태와 반대' };
+
+/** "왜 이 행동이 일어났나" — 운영 기록을 벡터로 찾아 소크라테스식으로 묻고, 답마다 기록 줄을 인용한다 (server/why.js)
+ *  뼈대는 DB 외래 키를 따른 규칙 답, 모델 답은 검증을 통과한 것만 따로 덧붙는다. */
+function QA({ x, lineText }) {
+  return (
+    <div className={`why-q ${x.status}`}>
+      <div className="why-q-head"><span className={`trace-tag ${x.status === 'verified' ? 'inj' : x.status === 'refuted' ? 'err' : 'wait'}`}>{Q_STATUS[x.status] || x.status}</span> {x.q}</div>
+      <div className="why-a">{x.a}{x.status === 'refuted' && <small> — {REFUTE[x.reason] || x.reason}{x.unsupported ? `: ${x.unsupported.join(', ')}` : ''}</small>}</div>
+      {(x.evidence || []).map((e, i) => (
+        <div key={i} className="why-ev" title={e.ref || ''}><b>{e.line}</b> {lineText(e.line) || e.quote}</div>
+      ))}
+    </div>
+  );
+}
+
+function Why({ executionId, onJump }) {
+  const [q, setQ] = useState('');
+  const [res, setRes] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [open, setOpen] = useState(false);
+  useEffect(() => { setRes(null); setErr(''); setOpen(false); }, [executionId]);
+
+  const ask = async () => {
+    setBusy(true); setErr('');
+    try { setRes(await api.why(q.trim() ? { question: q.trim() } : { executionId })); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
+  const lineText = (id) => res?.lines?.find((l) => l.id === id)?.text;
+  const m = res?.model;
+
+  return (
+    <div className="why">
+      <div className="why-ask">
+        <input className="why-input" placeholder="왜 이렇게 됐나? (비우면 이 실행 · 예: 김민수 고객 답장은 왜 나갔어?)" value={q}
+          onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') ask(); }} />
+        <button className="why-btn" disabled={busy} onClick={ask}>{busy ? '찾는 중…' : '왜?'}</button>
+      </div>
+      {err && <div className="trace-err">{err}</div>}
+      {res && !res.found && <div className="insp-note">{res.answer}</div>}
+      {res?.found && (
+        <div className="why-body">
+          <div className="why-meta">
+            검색 {res.search?.mode}{res.index?.embedded ? ` · 벡터 ${res.index.model} · 색인 ${res.index.total}건` : ' · 글자 겹침'}
+            {res.focus && res.focus !== executionId && <> · 초점 <button className="trace-link" onClick={() => onJump(res.focus)}>{res.focus}</button></>}
+          </div>
+          <ul className="why-sentences">{res.sentences.map((s, i) => <li key={i}>{s}</li>)}</ul>
+          {m && (
+            <div className="why-meta">
+              모델 {m.model} — 검증 {m.verified} · 반박 {m.refuted}{m.unanswerable ? ` · 기록에 없음 ${m.unanswerable}` : ''}
+              {m.sentences?.length > 0 && <ul className="why-sentences model">{m.sentences.map((s, i) => <li key={i}>{s}</li>)}</ul>}
+            </div>
+          )}
+          <button className="trace-link" onClick={() => setOpen((v) => !v)}>{open ? '문답 접기' : `스스로 던진 질문 ${res.questions.length}개와 근거 보기`}</button>
+          {open && (
+            <div className="why-qs">
+              {res.questions.map((x) => <QA key={x.id} x={x} lineText={lineText} />)}
+              {m?.questions?.length > 0 && <div className="trace-h">모델이 던진 질문 {m.questions.length}개 — 반박된 답은 버렸습니다</div>}
+              {m?.questions?.map((x) => <QA key={x.id} x={x} lineText={lineText} />)}
+            </div>
+          )}
+          {res.alternatives?.length > 0 && (
+            <div className="why-meta">다른 후보: {res.alternatives.map((h) => (
+              <button key={h.ref} className="trace-link" onClick={() => h.executionId && onJump(h.executionId)}>{h.sourceId}</button>
+            ))}</div>
+          )}
+          {res.note && <div className="insp-note">{res.note}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ExecutionsModal({ open, onClose }) {
   const [list, setList] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -179,6 +255,7 @@ export default function ExecutionsModal({ open, onClose }) {
                     {' · '}<span title={selected.id}>{selected.id}</span>
                   </span>
                 </div>
+                <Why executionId={selected.id} onJump={jump} />
                 <Trace trace={trace} onJump={jump} />
                 <div className="exec-logs">
                   {(selected.logs || []).map((l, i) => (

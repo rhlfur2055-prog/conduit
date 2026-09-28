@@ -127,10 +127,15 @@ describe('워커 프로세스 두 개', () => {
   it('일 30개를 두 워커가 나눠 갖고, 어느 일도 두 번 돌지 않는다', async () => {
     db_clear_others_except([]);
     const before = Executions.all().length;
-    const ids = [];
-    for (let i = 0; i < 30; i++) ids.push(enqueue({ workflowId: quick.id, workflowName: quick.name, trigger: 'webhook', idempotencyKey: `race-${i}` }).job.id);
+    // "둘 다 일했다" 는 공정성이지 정확성이 아니다 — 일이 몇 ms 만에 끝나면 한 워커가 연달아 다 가져갈 수 있다
+    // (PR #9 CI 에서 실측). 그래서 (1) 두 워커가 폴링을 시작한 뒤에 일을 넣고 (2) 일마다 30ms 를 들게 해
+    // 한쪽이 붙잡고 있는 동안 다른 쪽이 가져갈 틈을 만든다. 중복 실행 검사(아래 세 줄)는 이것과 무관하게 늘 성립해야 한다.
+    const slowish = Workflows.save({ name: '조금 걸리는 일', active: true, nodes: [n('t', 'manualTrigger', { json: '{}' }), n('d', 'delay', { ms: '30' }), n('c', 'code', { code: 'return { ok: true };' })], edges: [e('t', 'd'), e('d', 'c')] });
     const a = spawnWorker('A'); const b = spawnWorker('B');
+    const ids = [];
     try {
+      await until(() => a.out.includes('시작') && b.out.includes('시작'), 20000);
+      for (let i = 0; i < 30; i++) ids.push(enqueue({ workflowId: slowish.id, workflowName: slowish.name, trigger: 'webhook', idempotencyKey: `race-${i}` }).job.id);
       await until(() => ids.every((id) => Jobs.get(id).status === 'done'), 30000);
     } finally { await killed(a); await killed(b); }
     const jobs = ids.map((id) => Jobs.get(id));

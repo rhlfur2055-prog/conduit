@@ -5,7 +5,9 @@
 [![test](https://github.com/rhlfur2055-prog/conduit/actions/workflows/test.yml/badge.svg)](https://github.com/rhlfur2055-prog/conduit/actions/workflows/test.yml)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-![Conduit demo — five orders branch by amount into 3 VIP and 2 small orders](docs/demo.gif)
+![Conduit canvas in English — five orders branch by amount into 3 VIP orders (total 128,000) and 2 small orders](docs/screenshot-canvas-en.png)
+
+*The whole UI switches between English and Korean with one button (bottom left): sidebar, toolbar, node names, settings panel and the run log.*
 
 Conduit is a **node-based workflow engine** (in the spirit of n8n / Make) built around one question companies ask
 before letting AI touch customers: *what stops it from sending the wrong thing?*

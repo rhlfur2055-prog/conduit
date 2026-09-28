@@ -566,3 +566,12 @@ button { font-family: inherit; }
 .why-ev.refuted { color: #b4533a; }
 .why-sentences.model { color: var(--muted, #7a6f66); }
 .why-meta .trace-link { margin-left: 6px; }
+
+/* 사이드바 — 화면 언어 전환 (한국어 / English) */
+.sb-lang {
+  margin-left: auto; flex-shrink: 0; padding: 4px 9px; border-radius: 999px;
+  border: 1px solid var(--border); background: transparent; color: var(--ink-3);
+  font: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.sb-lang:hover { border-color: var(--accent); color: var(--accent); }
+

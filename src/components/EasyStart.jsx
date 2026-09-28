@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api.js';
 import { Icon } from '../ui/icons.jsx';
+import { useLang, setLang as setAppLang } from '../i18n.js';
 
 const U = {
   ko: {
@@ -85,7 +86,6 @@ const U = {
     noChat: '(no phone)',
   },
 };
-const loadLang = () => { try { return localStorage.getItem('conduit.lang') === 'en' ? 'en' : 'ko'; } catch { return 'ko'; } };
 
 /* ---------- 골라서 쓰기 — 템플릿 카드 ---------- */
 function Gallery({ onDone, lang }) {
@@ -279,13 +279,12 @@ export default function EasyStart({ open, onClose }) {
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState({});
   const [tab, setTab] = useState('start');
-  const [lang, setLangState] = useState(loadLang);
+  const lang = useLang();   // 캔버스와 같은 언어 설정 (src/i18n.js)
   const u = U[lang];
 
   // 화면 언어 = PC 주인 설정 (비서 답·템플릿 이름도 같은 언어로)
   const setLang = (l) => {
-    setLangState(l);
-    try { localStorage.setItem('conduit.lang', l); } catch { /* 저장 못 해도 이번 화면은 바뀐다 */ }
+    setAppLang(l);
     api.savePerson('owner', { lang: l }).catch(() => {});
   };
 
